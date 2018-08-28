@@ -5,6 +5,6 @@ robotrainer
 
 |         | Kinetic | Melodic |
 |:-------:|:-------:|:-------:|
-| Branch  | [`kinetic-devel`](https://gitlab.ipr.kit.edu/$NAMESPACE$/robotrainer/tree/kinetic-devel) | 
-| Status  | [![build status](https://gitlab.ipr.kit.edu/$NAMESPACE$/robotrainer/badges/kinetic-devel/pipeline.svg)](https://gitlab.ipr.kit.edu/$NAMESPACE$/robotrainer/commits/kinetic-devel) | |
+| Branch  | [`kinetic-devel`](https://gitlab.ipr.kit.edu/IIROB/robotrainer/tree/kinetic-devel) | 
+| Status  | [![build status](https://gitlab.ipr.kit.edu/IIROB/robotrainer/badges/kinetic-devel/pipeline.svg)](https://gitlab.ipr.kit.edu/IIROB/robotrainer/commits/kinetic-devel) | |
 
