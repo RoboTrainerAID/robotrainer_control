@@ -215,6 +215,7 @@ protected:
     std::map<std::string, RobotrainerEditorDisplayPath*> robotrainer_editor_display_path_sessions;
     
     std::map<std::string, std::vector<string>> force_names;
+
     std::map<std::string, RobotrainerEditorForce*> robotrainer_editor_force_sessions;
 
     std::vector<std::string> wall_names;

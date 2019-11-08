@@ -8,6 +8,8 @@
  */
 
 #include <cstdio>
+#include <ctime>
+#include <locale>
 
 #include <ros/ros.h>
 
@@ -57,11 +59,22 @@ void RobotrainerEditorDisplayPath::setMetaParams(boost::shared_ptr<interactive_m
         ros::Publisher* path_update_publisher_) {
   
     point_menu_handler = new interactive_markers::MenuHandler;
+    std::string add = "add";
+    //if (isMarkerInPivotPoints(feedback)) {
+    //    add = "remove";
+    //}
+    point_menu_handler->insert ( add + "point as pivot", [this] ( const InteractiveMarkerFeedbackConstPtr &feedback ) {
+        this->addSelectedPointAsPivot ( feedback );
+    } );
     point_menu_handler->insert ( "delete path from this point on", [this] ( const InteractiveMarkerFeedbackConstPtr &feedback ) {
         this->deletePathFromSelectedPoint ( feedback );
     } );
     server = server_;
     path_update_publisher = path_update_publisher_;
+}
+
+std::string RobotrainerEditorDisplayPath::getPathName() {
+    return path_name;
 }
 
 int RobotrainerEditorDisplayPath::getPathLength() {
@@ -310,6 +323,9 @@ void RobotrainerEditorDisplayPath::loadPath(std::string filename) {
     file_name = filename;
 }
 
+
+
+
 // read path positions and create resulting path from yaml-file
 void RobotrainerEditorDisplayPath::loadFile(std::string filename) {
     loadPath(filename);
@@ -327,6 +343,22 @@ void RobotrainerEditorDisplayPath::loadFile(std::string filename) {
 }
     
 void RobotrainerEditorDisplayPath::loadFile() {
+    
+    // Get path name if is is not existing then create new one
+    if (!ros::param::get(params->editor_ns + "/" + params->path_ns + "/path_name", path_name)) {
+      std::time_t t = std::time(nullptr);
+      char mbstr[100];
+      std::strftime(mbstr, sizeof(mbstr), "%Y%m%d%H%M", std::localtime(&t));
+      path_name = "path_";
+      path_name.append(mbstr);
+      ros::param::set(params->editor_ns + "/" + params->path_ns + "/path_name", path_name);
+    }
+    
+    if (!ros::param::get(params->editor_ns + "/" + params->path_ns + "/pivot_points", pivot_points)) {
+
+      ros::param::set(params->editor_ns + "/" + params->path_ns + "/pivot_points", pivot_points);
+    }
+    
 
     //clear the points lists, they shall be regenerated
     if (!path_points.empty()) path_points.clear();
@@ -424,6 +456,39 @@ std::map<std::string, geometry_msgs::Point> RobotrainerEditorDisplayPath::delete
         ROS_ERROR("tried to crop a path from a non 'InteractiveMarkerFeedback::MENU_SELECT' feedback event!");
         return cube_point_map;
     }
+    
+}
+
+std::map<std::string, geometry_msgs::Point> RobotrainerEditorDisplayPath::addPointAsPivot(std::string name){
+    int index = std::find(cube_point_names.begin(), cube_point_names.end(), name) - cube_point_names.begin();
+    if (index == (cube_point_names.end() - cube_point_names.begin())) {
+        ROS_ERROR("could not add point as pivot (RobotrainerEditorDisplayPath::addPointAsPivot), for the (cube-)point-name read from the interactive marker has not been found in the cube_point_names list!");
+        return cube_point_map;
+    }
+    
+    Point point = cube_point_map[name];
+    for (index = 0; index < (path_points.size() - 1); index++){ //adapt index to all points, not only interactive cubes
+        if (pointEqual(path_points[index], point)) break;
+    }
+    for(int i = 0; i < pivot_points.size(); i++) {
+        if (pivot_points[i].compare(path_point_names[index]) == 0) {
+           pivot_points.erase(pivot_points.begin() + i);
+           ros::param::set(params->editor_ns + "/" + params->path_ns + "/pivot_points", pivot_points);
+           return cube_point_map;
+        }
+    } 
+    pivot_points.push_back(path_point_names[index]);
+    ros::param::set(params->editor_ns + "/" + params->path_ns + "/pivot_points", pivot_points);
+    return cube_point_map;
+}
+
+std::map<std::string, geometry_msgs::Point> RobotrainerEditorDisplayPath::addSelectedPointAsPivot(const InteractiveMarkerFeedbackConstPtr &feedback){
+    if ( feedback->event_type == InteractiveMarkerFeedback::MENU_SELECT ) {
+        return addPointAsPivot ( feedback->marker_name );
+    } else {
+        ROS_ERROR("tried to add point as pivot from a non 'InteractiveMarkerFeedback::MENU_SELECT' feedback event!");
+        return cube_point_map;
+    }
 }
 
 void RobotrainerEditorDisplayPath::reloadSession() {
@@ -440,7 +505,11 @@ void RobotrainerEditorDisplayPath::reloadSession() {
 
     //upload point names to parameterServer
     ros::param::set(params->editor_ns + "/" + params->path_ns + "/points", path_point_names);
-
+    
+    //upload path name to parameterServer
+    ros::param::set(params->editor_ns + "/" + params->path_ns + "/path_name", path_name);
+    
+     ros::param::set(params->editor_ns + "/" + params->path_ns + "/pivot_points", pivot_points);
     //create path on interactive marekr server
     createPath();
 }
@@ -454,3 +523,27 @@ void RobotrainerEditorDisplayPath::resetServer() {
 void RobotrainerEditorDisplayPath::saveFile(std::string filename) {
     saveFileTool(filename, params->editor_ns + "/" + params->path_ns);
 }
+
+// bool RobotrainerEditorDisplayPath::isMarkerInPivotPoints(const InteractiveMarkerFeedbackConstPtr &feedback) {
+//     if ( feedback->event_type == InteractiveMarkerFeedback::MENU_SELECT ) {
+//     
+//         int index = std::find(cube_point_names.begin(), cube_point_names.end(), feedback->marker_name) - cube_point_names.begin();
+//     if (index == (cube_point_names.end() - cube_point_names.begin())) {
+//         ROS_ERROR("could not add point as pivot (RobotrainerEditorDisplayPath::addPointAsPivot), for the (cube-)point-name read from the interactive marker has not been found in the cube_point_names list!");
+//         return false;
+//     }
+//     
+//     Point point = cube_point_map[feedback->marker_name];
+//     for (index = 0; index < (path_points.size() - 1); index++){ //adapt index to all points, not only interactive cubes
+//         if (pointEqual(path_points[index], point)) break;
+//     }
+//     for(int i = 0; i < pivot_points.size(); i++) {
+//         if (pivot_points[i].compare(path_point_names[index]) == 0) {
+//           return true;
+//         }
+//     }
+//     return false;
+//     } else {
+//         return false;
+//     }
+// }

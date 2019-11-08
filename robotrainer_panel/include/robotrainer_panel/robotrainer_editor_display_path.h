@@ -18,11 +18,13 @@ class RobotrainerEditorDisplayPath : public RobotrainerEditorTool {
 robotrainer_panel::robotrainer_editorParameters* params;
 
 //maps and vectors to hold enough data to define the current configuration
+std::string path_name;
 std::vector<Point> path_points;
 std::vector<std::string> path_point_names;
 std::map<int, std::string> menu_id_map;
 std::vector<std::string> cube_point_names;
 std::map<std::string, geometry_msgs::Point> cube_point_map;
+std::vector<std::string> pivot_points;
 
 // this holds the function that shall be called when an interactive Marker is clicked
 std::function<void(const InteractiveMarkerFeedbackConstPtr &)> do_this;
@@ -50,6 +52,8 @@ RobotrainerEditorDisplayPath(robotrainer_panel::robotrainer_editorParameters* pa
 void setMetaParams(boost::shared_ptr<interactive_markers::InteractiveMarkerServer> server_,
         ros::Publisher* path_update_publisher_) ;
 
+std::string getPathName();
+        
 int getPathLength();
 
 int getCount();
@@ -99,6 +103,11 @@ std::map<std::string, geometry_msgs::Point> deletePathFromPoint(std::string name
 
 std::map<std::string, geometry_msgs::Point> deletePathFromSelectedPoint(const InteractiveMarkerFeedbackConstPtr &feedback);
 
+std::map<std::string, geometry_msgs::Point> addPointAsPivot(std::string name);
+
+std::map<std::string, geometry_msgs::Point> addSelectedPointAsPivot(const InteractiveMarkerFeedbackConstPtr &feedback);
+
+//bool isMarkerInPivotPoints(const InteractiveMarkerFeedbackConstPtr &feedback) ;
 //save all data in parameter server to persistent yaml file
 void saveFile(std::string filename);
 

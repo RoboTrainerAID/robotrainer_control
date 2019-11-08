@@ -7,6 +7,10 @@
  */
 #include <robotrainer_panel/robotrainer_editor_panel.h>
 
+#include <cstdio>
+#include <ctime>
+#include <locale>
+
 using namespace visualization_msgs;
 using namespace geometry_msgs;
 using namespace std;
@@ -358,8 +362,12 @@ void RobotrainerEditorPanel::setActive() {
         std::string str =  sstr.str();
         const char* chr = str.c_str();
         std::system(chr);
-        //warn modalities about changed data
+        // warn modalities about changed data
         std::system("rosservice call /base/configure_modalities");
+        // warn deviation about changed data
+        std::system("rosservice call /robotrainer_deviation/configure");
+        // warn user performance calculation about new data
+        std::system("rosservice call /robotrainer_performance/configure");
     }
 }
 
@@ -482,6 +490,7 @@ void RobotrainerEditorPanel::recordSinglePoint() {
     }
 
     geometry_msgs::Vector3 pickedPoint = transform_ee_base_stamped.transform.translation;
+    pickedPoint.z = 0.0;
     ROS_INFO_STREAM("pickedPoint: " + std::to_string(pickedPoint.x) + " | " + std::to_string(pickedPoint.y));
 
     robotrainer_editor_display_path->addPoint(RobotrainerEditorTool::vectorToPoint(pickedPoint));
@@ -742,7 +751,16 @@ void RobotrainerEditorPanel::sessionFromActive() {
 
 // save (whole!) current scenerio to file
 void RobotrainerEditorPanel::saveScenarioFile(std::string filename) {
-
+     std::string scenario_id;
+    if (!ros::param::get(params->editor_ns + "/scenario_id", scenario_id)) {
+      std::time_t t = std::time(nullptr);
+      char mbstr[100];
+      std::strftime(mbstr, sizeof(mbstr), "%Y%m%d%H%M", std::localtime(&t));
+      scenario_id = "scenario_id";
+      scenario_id.append(mbstr);
+      ros::param::set(params->editor_ns + "/scenario_id", scenario_id);
+    }
+    
     //call to bash to save data into persistent yaml file
     std::ostringstream sstr;
 
@@ -904,7 +922,7 @@ void RobotrainerEditorPanel::load( const rviz::Config& config )
 
 void RobotrainerEditorPanel::dataServiceSaveEditor()
 {
-    std::string name;
+   std::string name;
     if(!ros::param::get(params->editor_ns + "/" + params->scenario_ns, name))
     {
         bool ok;

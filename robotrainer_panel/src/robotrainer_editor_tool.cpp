@@ -63,7 +63,7 @@ void RobotrainerEditorTool::saveFile(std::string s) {
 
 void RobotrainerEditorTool::saveFileTool(std::string filename, std::string full_ns) {
     filename = makeFileName(filename);
-  
+    ROS_ERROR("got it");
     std::ostringstream sstr;
     sstr << "rosparam dump " << filename << " /" << full_ns;
     std::string str =  sstr.str();
