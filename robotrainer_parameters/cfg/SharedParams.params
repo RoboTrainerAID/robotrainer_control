@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+from rosparam_handler.parameter_generator_catkin import *
+gen = ParameterGenerator()
+
+from robotrainer_parameters import *
+
+#Syntax : Package, Node, Config Name(The final name will be MyDummyConfig)
+exit(gen.generate("robotrainer_parameters", "robotrainer", "SharedParams"))

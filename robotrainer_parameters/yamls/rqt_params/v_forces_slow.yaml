@@ -1,0 +1,29 @@
+!!python/object/new:dynamic_reconfigure.encoding.Config
+dictitems:
+  compensate_velocity: false
+  compensation_reference_velocity: 0.3
+  controller_update_rate: 100.0
+  groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+    dictitems:
+      compensate_velocity: false
+      compensation_reference_velocity: 0.3
+      controller_update_rate: 100.0
+      groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      id: 0
+      max_force: 120
+      max_velocity: 0.8
+      name: Default
+      parameters: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      parent: 0
+      state: true
+      time_const_T: 0.75
+      trapezoid_max_at_percent_radius: 0.25
+      type: ''
+    state: []
+  max_force: 120
+  max_velocity: 0.8
+  time_const_T: 0.75
+  trapezoid_max_at_percent_radius: 0.25
+state: []

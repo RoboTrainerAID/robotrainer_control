@@ -1,25 +1,25 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>robotrainer</name>
-  <version>0.0.1</version>
-  <description>Metapackage for Robotrainer packages</description>
+  <name>robotrainer_modalities</name>
+  <version>0.0.0</version>
+  <description>The robotrainer_modalities package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
   <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-  <maintainer email="stogl@todo.todo">stogl</maintainer>
+  <maintainer email="urduq@student.kit.edu">Peter Wern</maintainer>
 
 
   <!-- One license tag required, multiple allowed, one license per tag -->
   <!-- Commonly used license strings: -->
   <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>IPR-Licence</license>
+  <license>TODO</license>
 
 
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/robotrainer</url> -->
+  <!-- <url type="website">http://wiki.ros.org/robotrainer_modalities</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->
@@ -49,11 +49,28 @@
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>pluginlib</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>rosparam_handler</build_depend>
+  <build_depend>dynamic_reconfigure</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <depend>filters</depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>pluginlib</build_export_depend>
+  <build_export_depend>dynamic_reconfigure</build_export_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>pluginlib</exec_depend>
+  <exec_depend>dynamic_reconfigure</exec_depend>
+	<depend>robotrainer_helper_types</depend>
+  <depend>robotrainer_parameters</depend>
+  <depend>realtime_tools</depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
     <!-- Other tools can request additional information be placed here -->
-    <metapackage/>
+    <filters plugin="${prefix}/modalities_plugin.xml" />
+    <robotrainer_modalities plugin="${prefix}/modalities_controllers_plugins.xml" />
   </export>
 </package>

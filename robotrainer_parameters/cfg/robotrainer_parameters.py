@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+from rosparam_handler.parameter_generator_catkin import *
+gen = ParameterGenerator()
+
+#Namespaces
+gen.add("project_ns", paramtype="std::string", description="namespace of project", default="robotrainer")
+gen.add("scenario_ns", paramtype="std::string", description="namespace of the current scenario", default="scenario")
+gen.add("force_ns", paramtype="std::string", description="namespace/prefix of force areas", default="force")
+gen.add("config_ns", paramtype="std::string", description="namespace for configs of other name-space types", default="config")
+gen.add("data_ns", paramtype="std::string", description="namespace for data of other name-space types", default="data")
+gen.add("arrow_ns", paramtype="std::string", description="namespace/prefix for relative force vector in Newton", default="arrow")
+gen.add("area_ns", paramtype="std::string", description="namespace of the area center point", default="area")
+gen.add("margin_ns", paramtype="std::string", description="namespace of an area margin", default="margin")
+gen.add("wall_ns", paramtype="std::string", description="namespace of a wall", default="wall")
+gen.add("path_ns", paramtype="std::string", description="namespace of a path", default="path")
+gen.add("section_ns", paramtype="std::string", description="namespace of pathtracking sections", default="section")
+gen.add("force_distance_function_ns", paramtype="std::string", description="TODO", default="force_distance_function")
+gen.add("max_deviation_ns", paramtype="std::string", description="TODO", default="max_deviation")
+gen.add("area_functions_ns", paramtype="std::string", description="TODO", default="area_functions")
+#gen.add("amplification_ns", paramtype="std::string", description="name-space/name-prefix for amplification modifiers", default="amplification")
+#gen.add("invert_direction_ns", paramtype="std::string", description="name-space/name-prefix for invert_direction modifiers", default="invert_direction")
+#gen.add("invert_rotation_ns", paramtype="std::string", description="name-space/name-prefix for invert_rotation modifiers", default="invert_rotation")
+#gen.add("invert_y_ns", paramtype="std::string", description="name-space/name-prefix for invert_y modifiers", default="invert_y")
+#gen.add("keep_direction_ns", paramtype="std::string", description="name-space/name-prefix for keep_direction modifiers", default="keep_direction")
+#gen.add("keep_rotation_ns", paramtype="std::string", description="name-space/name-prefix for keep_rotation modifiers", default="keep_rotation")
+gen.add("yaml_ns", paramtype="std::string", description="name of the default directory for saving yaml files", default="yamls")
+gen.add("workspace_ns", paramtype="std::string", description="path to the workspace this project is located in", default="workspace/ros_ws_kinetic")
+gen.add("force_distance_functions", paramtype="std::vector<std::string>", description="a list of all available force distance functions", default=["trapezoidal","trigonometrical","gaussian"])
+gen.add("area_functions", paramtype="std::vector<std::string>", description="a list of all available area distance functions", default=["double_speed", "half_speed", "apply_counterforce", "invert_direction", "invert_rotation", "invert_y", "keep_direction", "keep_rotation"])
+
+#Syntax : Package, Node, Config Name(The final name will be MyDummyConfig)
+#exit(gen.generate("robotrainer_parameters", "robotrainer", "SharedParams"))

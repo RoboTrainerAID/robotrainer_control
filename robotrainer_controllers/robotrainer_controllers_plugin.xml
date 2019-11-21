@@ -1,0 +1,33 @@
+<library path="lib/librobotrainer_controllers">
+
+        <class name="robotrainer_controllers/FTSController" type="robotrainer_controllers::FTSController" base_class_type="controller_interface::ControllerBase">
+                        <description>
+                                This controller is basis for control of Robotrainer. Used since 2014.
+                        </description>
+        </class>
+        
+        <class name="robotrainer_controllers/FTSBaseController" type="robotrainer_controllers::FTSBaseController" base_class_type="controller_interface::ControllerBase">
+                <description>
+                        This controller is basic controller of Robotrainer. It uses the FTSController used since 2014.
+                </description>
+        </class>
+        
+        <class name="robotrainer_controllers/FTSAdaptiveForceController" type="robotrainer_controllers::FTSAdaptiveForceController" base_class_type="controller_interface::ControllerBase">
+                <description>
+                        Variation of the FTSBaseController with adaptive time dynamics and velocity-adaptive force.
+                </description>
+        </class>
+        
+        <class name="robotrainer_controllers/PassiveBehaviorController" type="robotrainer_controllers::PassiveBehaviorControllerBase" base_class_type="controller_interface::ControllerBase">
+                <description>
+                        Base controller for passive behavior control. 
+                </description>
+        </class>
+        
+        <class name="robotrainer_controllers/IntegralCompareCtrl" type="robotrainer_controllers::IntegralCompareCtrl" base_class_type="controller_interface::ControllerBase">
+                <description>
+                        This controller can be used to compare different integrals.
+                </description>
+        </class>
+
+</library>

@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+from rosparam_handler.parameter_generator_catkin import *
+
+gen = ParameterGenerator()
+
+#Configuration for controller
+gen.add("use_modalities_VF_controller", paramtype="bool", description="Wheater to use the controller for VirtualForces or not.", default=True, configurable=True)
+gen.add("limit_modalities_vel_norm", paramtype="bool", description="Wheater to limit the modalities velocity with ||human velocity||.", default=False, configurable=True)
+gen.add("integral_HF_MV_window_size", paramtype="int", description="Describes how much values are used for calculating the Slidingintegral. HF_MV = Human Force, Modality Velocity", default=128, min=1, max= 2048, configurable=True);
+gen.add("integral_VF_MV_window_size", paramtype="int", description="Describes how much values are used for calculating the Slidingintegral. VF_MV = Virtual Force, Modality Velocity", default=128, min=1, max= 2048, configurable=True);
+gen.add("max_abs_angle", paramtype="double", description="Describes the max angular derivation from x-axis of VF and HF combined ", default=15.0, min=1.0, max= 90.0, configurable=True);
+gen.add("forgetting_factor", paramtype="double", description="Controlls how fast the virtual twist is used again. ", default=0.05, min=0.0, max= 1.0, configurable=True);
+gen.add("eps", paramtype="double", description="The min difference between goal_forgetting_factor-forgetting_factor bevor goal_factor is used again", default=0.001, min=0.0000001, max= 1.0, configurable=True);
+
+#Syntax : Package, Node, Config Name(The final name will be MyDummyConfig)
+exit(gen.generate("robotrainer_modalities", "robotrainer_modalities", "ModalitiesVFController"))

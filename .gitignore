@@ -1,0 +1,7 @@
+*.pyc
+*.swp
+*.kate-swp
+*.kdev4
+*.directory
+robotrainer_parameters/cfg/robotrainer_parameters.pyc
+robotrainer_controllers/.kdev4/

@@ -1,0 +1,23 @@
+!!python/object/new:dynamic_reconfigure.encoding.Config
+dictitems:
+  controller_update_rate: 100.0
+  groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+    dictitems:
+      controller_update_rate: 100.0
+      groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      id: 0
+      max_force: 110
+      max_velocity: 1.2
+      name: Default
+      parameters: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      parent: 0
+      state: true
+      time_const_T: 0.8
+      type: ''
+    state: []
+  max_force: 110
+  max_velocity: 1.2
+  time_const_T: 0.8
+state: []

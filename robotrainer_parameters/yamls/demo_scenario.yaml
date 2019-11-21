@@ -1,0 +1,124 @@
+
+#--------------------------------------------------------------------------------------------------------------
+# This is a complete demo scenario. Load this to the root of parameter server using 'rosparam load'.
+#
+# Desciption:
+# - 1 Virtual Area with inverted rotation 
+# - 1 Virtual Force Area (25N) (same area as Virtual Area)
+# - 1 Path
+# - 1 Pathsection for pathtracking
+# - 1 virtual wall
+#--------------------------------------------------------------------------------------------------------------
+
+robotrainer: #Common namespace for all robotrainer related params
+  scenario: #Active scenario created in the robotrainer editor. When it got changed on parameter server, the following service needs to be called in order to push the scenario to the modalities: /base/configure_modalities.
+    area:
+      config:
+        area_names: [area_0]
+      data:
+        area_0:
+          area: {X: -0.5, Y: 1.5, Z: 0.0} #area center point
+          margin: {X: -0.5, Y: 0.8, Z: 0.0} #point on area margin     
+          amplification: 1.0
+          invert_direction: false
+          invert_rot: true
+          invert_y: false
+          keep_direction: false
+          keep_rotation: false
+    force: 
+      config:
+        display_path_file_name: /home/groten/path_yaml_test.yaml #only relevat for editor
+        force_names: [force_1]
+        newton_per_meter: 30.0
+      data:
+        force_1:
+          area: {X: -0.5, Y: 1.0, Z: 0.0} #area center point
+          arrow: {X: 0, Y: -25.0, Z: 0.0} #relative force vector in Newton
+          margin: {X: -0.5, Y: 0.3, Z: 0.0} #point on area margin     
+          force_distance_function: 0 #0=trapezoidal 1=trigonometical 2=gaussian
+    wall:
+      config:
+        wall_names: [wall_0]
+      data:
+        wall_0:
+          L: {X: 0.0, Y: 2.0, Z: 0.0}
+          R: {X: -1.0, Y: 2.0, Z: 0.0}
+          area: 
+            area: 0.5
+            cube: {X: 0.5, Y: 0.0, Z: 0.0} #only relevat for editor
+          force_distance_function: 0 #0=trapezoidal 1=trigonometical 2=gaussian
+    section: #sections of the path in which pathtracking will be enabled
+      config:
+        section_names: [section_0]
+      data:
+        section_0:
+          start: point5
+          end: point62
+          force_distance_function: 0 #0=linear 1=quadratic
+          max_deviation: 0.5 #Maximum deviation from the path in meters, min=0.3
+    path:
+      points: [point1, point2, point3, point4, point5, point6, point7, point8, point9, point10, point11, point12, point13, point14, point15, point16, point17, point18, point19, point20, point21, point22, point23, point24, point25, point26, point27, point28, point29, point30, point31, point32, point33, point34, point35, point36, point37, point38, point39, point40, point41, point42, point43, point44, point45, point46, point47, point48, point49, point50, point51, point52, point53, point54, point55, point56, point57, point58, point59, point60, point61, point62, point63]
+      point1: {x: -1.30, y: 0.13, z: 0.00}
+      point2: {x: -1.25, y: 0.13, z: 0.00}
+      point3: {x: -1.20, y: 0.13, z: 0.00}
+      point4: {x: -1.15, y: 0.13, z: 0.00}
+      point5: {x: -1.10, y: 0.13, z: 0.00}
+      point6: {x: -1.05, y: 0.13, z: 0.00}
+      point7: {x: -1.00, y: 0.13, z: 0.00}
+      point8: {x: -0.95, y: 0.13, z: 0.00}
+      point9: {x: -0.90, y: 0.13, z: 0.00}
+      point10: {x: -0.85, y: 0.13, z: 0.00}
+      point11: {x: -0.80, y: 0.13, z: 0.00}
+      point12: {x: -0.75, y: 0.13, z: 0.00}
+      point13: {x: -0.70, y: 0.13, z: 0.00}
+      point14: {x: -0.65, y: 0.13, z: 0.00}
+      point15: {x: -0.60, y: 0.13, z: 0.00}
+      point16: {x: -0.55, y: 0.13, z: 0.00}
+      point17: {x: -0.50, y: 0.13, z: 0.00}
+      point18: {x: -0.452661362759014, y: 0.146095136661935, z: 0.00}
+      point19: {x: -0.405322725518029, y: 0.162190273323870, z: 0.00}
+      point20: {x: -0.357984088277043, y: 0.178285409985805, z: 0.00}
+      point21: {x: -0.310645451036057, y: 0.194380546647740, z: 0.00}
+      point22: {x: -0.263306813795072, y: 0.210475683309676, z: 0.00}
+      point23: {x: -0.215968176554086, y: 0.226570819971611, z: 0.00}
+      point24: {x: -0.168629539313100, y: 0.242665956633546, z: 0.00}
+      point25: {x: -0.121290902072115, y: 0.258761093295481, z: 0.00}
+      point26: {x: -0.0739522648311292, y: 0.274856229957416, z: 0.00}
+      point27: {x: 0.00, y: 0.30, z: 0.00}
+      point28: {x: 0.0447213595499958, y: 0.322360679774998, z: 0.00}
+      point29: {x: 0.0894427190999916, y: 0.344721359549996, z: 0.00}
+      point30: {x: 0.134164078649987, y: 0.367082039324994, z: 0.00}
+      point31: {x: 0.20, y: 0.40, z: 0.00}
+      point32: {x: 0.235355339059327, y: 0.435355339059327, z: 0.00}
+      point33: {x: 0.270710678118655, y: 0.470710678118655, z: 0.00}
+      point34: {x: 0.306066017177982, y: 0.506066017177982, z: 0.00}
+      point35: {x: 0.341421356237310, y: 0.541421356237310, z: 0.00}
+      point36: {x: 0.40, y: 0.60, z: 0.00}
+      point37: {x: 0.40, y: 0.65, z: 0.00}
+      point38: {x: 0.40, y: 0.70, z: 0.00}
+      point39: {x: 0.40, y: 0.75, z: 0.00}
+      point40: {x: 0.40, y: 0.80, z: 0.00}
+      point41: {x: 0.40, y: 0.85, z: 0.00}
+      point42: {x: 0.40, y: 0.90, z: 0.00}
+      point43: {x: 0.40, y: 0.95, z: 0.00}
+      point44: {x: 0.40, y: 1.00, z: 0.00}
+      point45: {x: 0.40, y: 1.05, z: 0.00}
+      point46: {x: 0.40, y: 1.10, z: 0.00}
+      point47: {x: 0.40, y: 1.15, z: 0.00}
+      point48: {x: 0.40, y: 1.20, z: 0.00}
+      point49: {x: 0.40, y: 1.25, z: 0.00}
+      point50: {x: 0.40, y: 1.30, z: 0.00}
+      point51: {x: 0.40, y: 1.35, z: 0.00}
+      point52: {x: 0.40, y: 1.40, z: 0.00}
+      point53: {x: 0.40, y: 1.45, z: 0.00}
+      point54: {x: 0.40, y: 1.50, z: 0.00}
+      point55: {x: 0.40, y: 1.55, z: 0.00}
+      point56: {x: 0.40, y: 1.60, z: 0.00}
+      point57: {x: 0.40, y: 1.65, z: 0.00}
+      point58: {x: 0.40, y: 1.70, z: 0.00}
+      point59: {x: 0.40, y: 1.75, z: 0.00}
+      point60: {x: 0.40, y: 1.80, z: 0.00}
+      point61: {x: 0.40, y: 1.85, z: 0.00}
+      point62: {x: 0.40, y: 1.90, z: 0.00}
+      point63: {x: 0.40, y: 1.95, z: 0.00}
+

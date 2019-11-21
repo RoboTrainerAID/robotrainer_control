@@ -1,0 +1,27 @@
+!!python/object/new:dynamic_reconfigure.encoding.Config
+dictitems:
+  controller_update_rate: 100.0
+  groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+    dictitems:
+      controller_update_rate: 100.0
+      groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      id: 0
+      max_force: 150.0
+      max_velocity: 1.8
+      name: Default
+      parameters: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      parent: 0
+      state: true
+      time_const_T: 0.4
+      trapezoid_max_at_percent_radius: 0.25
+      type: ''
+      wall_force: 150.0
+    state: []
+  max_force: 150.0
+  max_velocity: 1.8
+  time_const_T: 0.4
+  trapezoid_max_at_percent_radius: 0.25
+  wall_force: 150.0
+state: []
