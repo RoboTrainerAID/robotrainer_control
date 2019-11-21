@@ -1,0 +1,42 @@
+#!/usr/bin/env python
+from rosparam_handler.parameter_generator_catkin import *
+gen = ParameterGenerator()
+from robotrainer_parameters import *
+
+#CONTENT related
+gen.add("base_scale", paramtype="double", description="a basic scale for multiple visual objects", default=1.0)
+gen.add("influence_radius", paramtype="double", description="the default influence radius for circular effect areas", default=0.5)
+gen.add("path_step_rate", paramtype="double", description="how many points of the predefined path should be modifiable", default=0.18) #should be distance instead of points,a approximately 20cm, rather with some downward tolerance, like 18cm
+gen.add("record_point_rate", paramtype="double", description="maximum distance between two recorder points, points that are too far apart will receive linear interpolating points", default=0.05)
+#gen.add("current_checkpoint_name", paramtype="std::string", description="todo", default="")#TODO description
+gen.add("newton_per_meter", paramtype="double", description="how many newton does a certain arrow length represent?", default=30.0)
+
+#FILE related
+gen.add("save_file", paramtype="std::string", description="name of the save file", default="robotrainer_editor_force_arrows")
+gen.add("path_point_file", paramtype="std::string", description="name of the file to save the path points", default="robotrainer_editor_path_points") #TODO difference from "save file"?
+
+#NAME-SPACES
+gen.add("editor_ns", paramtype="std::string", description="name-space/name-prefix for the application", default="robotrainer/editor")
+gen.add("segment_ns", paramtype="std::string", description="#TODO", default="segment")#TODO description
+gen.add("cube_ns", paramtype="std::string", description="name-space/name-prefix for cubes", default="cube")
+
+
+#TOPICS
+gen.add("force_cube_topic", paramtype="std::string", description="subscription topic for cubes that are use to scale circular effect areas", default="robotrainer_editor_force_cube")
+gen.add("checkpoint_topic", paramtype="std::string", description="#TODO", default="/checkpoint_topic") #TODO description
+gen.add("path_update_topic", paramtype="std::string", description="#TODO", default="/path_updated") #TODO description
+gen.add("arrow_update_topic", paramtype="std::string", description="#TODO", default="/arrows_updated") #TODO description
+gen.add("force_arrow_topic", paramtype="std::string", description="#TODO", default="/robotrainer_editor_force_arrows") #TODO description
+gen.add("wall_topic", paramtype="std::string", description="#TODO", default="/robotrainer_editor_walls") #TODO description
+gen.add("wall_update_topic", paramtype="std::string", description="#TODO", default="/walls_updated") #TODO description
+gen.add("area_topic", paramtype="std::string", description="#TODO", default="/robotrainer_editor_areas") #TODO description
+gen.add("area_update_topic", paramtype="std::string", description="#TODO", default="/areas_updated") #TODO description
+gen.add("record_info_topic", paramtype="std::string", description="topic on which messages containing recorded path points are published", default="/record_info_topic")
+gen.add("robot_odometry_topic", paramtype="std::string", description="topic on which messages containing odometry of the robot are published", default="/base_controller/odometry")
+
+gen.add("frame_id", paramtype="std::string", description="#TODO", default="map") #TODO description
+gen.add("config_path", paramtype="std::string", description="#TODO", default="~") #TODO description
+gen.add("menu_id", paramtype="int", description="#TODO", default=1) #TODO description
+gen.add("robot_name", paramtype="std::string", description="name of the robot", default="sr2")
+
+exit(gen.generate("robotrainer_panel", "handler_params", "robotrainer_editor"))

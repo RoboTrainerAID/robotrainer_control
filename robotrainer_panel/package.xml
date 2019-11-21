@@ -1,0 +1,25 @@
+<package format="2">
+  <name>robotrainer_panel</name>
+  <version>0.10.1</version>
+  <description>
+     RViz Plugin for RobotrainerEditor project
+  </description>
+  <maintainer email="gilbert.groten@student.kit.edu">Gilbert Groten</maintainer>
+  <license>BSD</license>
+
+  <author>Gilbert Groten</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>qtbase5-dev</depend>
+  <depend>libqt5-core</depend>
+  <depend>libqt5-gui</depend>
+  <depend>libqt5-widgets</depend>
+  <depend>robotrainer_data_service</depend>
+  <depend>robotrainer_parameters</depend>
+  <depend>rviz</depend>
+
+  <export>
+      <rosdoc config="${prefix}/rvizdoc.yaml"/>
+      <rviz plugin="${prefix}/plugin_description.xml"/>
+  </export>
+</package>

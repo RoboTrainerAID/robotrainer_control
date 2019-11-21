@@ -1,0 +1,14 @@
+<library path="lib/librobotrainer_modalities">
+        <class name="robotrainer_modalities/VirtualForcesFilter" type="robotrainer_modalities::VirtualForces<geometry_msgs::Twist>" base_class_type="filters::FilterBase<geometry_msgs::Twist>">
+                <description>This is the virtual forces plugin.</description>
+        </class>
+        <class name="robotrainer_modalities/PathTrackingFilter" type="robotrainer_modalities::PathTracking<geometry_msgs::Twist>" base_class_type="filters::FilterBase<geometry_msgs::Twist>">
+                <description>This is the path tracking plugin.</description>
+        </class>
+        <class name="robotrainer_modalities/VirtualAreasFilter" type="robotrainer_modalities::VirtualAreas<geometry_msgs::Twist>" base_class_type="filters::FilterBase<geometry_msgs::Twist>">
+                <description>This is the virtual areas plugin.</description>
+        </class>
+        <class name="robotrainer_modalities/VirtualWallsFilter" type="robotrainer_modalities::VirtualWalls<geometry_msgs::Twist>" base_class_type="filters::FilterBase<geometry_msgs::Twist>">
+                <description>This is the virtual walls plugin.</description>
+        </class>
+</library>

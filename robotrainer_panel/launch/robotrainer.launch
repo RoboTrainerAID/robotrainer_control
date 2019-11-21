@@ -1,0 +1,4 @@
+<launch>
+  <node type="data_srv" name="data_srv" pkg="robotrainer_data_service" />
+  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find robotrainer_panel)/cfg/robotrainer.rviz" />
+</launch>

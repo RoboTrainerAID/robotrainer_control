@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+from rosparam_handler.parameter_generator_catkin import *
+gen = ParameterGenerator()
+
+#Configuration for all force areas
+gen.add("compensate_velocity", paramtype="bool", description="Keep the effect of the virtual forces indepentend of the velocity.", default=False, configurable=True)
+gen.add("use_admitance_velocity", paramtype="bool", description="Use linear connection between Mass-Damping admitance and velocity for calculation .", default=False, configurable=True)
+gen.add("compensation_reference_velocity", paramtype="double", description="Reference velocity for the compensation of the velocity", default=0.3, min=0.0, max=1.70, configurable=True)
+gen.add("trapezoid_max_at_percent_radius", paramtype="double", description="Trapezoidal distance_function only: percentage of the area_radius at which the trapezoidal function will start decreasing from its maximum to zero.", default=0.25, min=0.0, max=1.0, configurable=True)
+gen.add("max_force", paramtype="double", description="The virtual force that will cause the maximum virtual velocity.",  default=120, min=0.0, max=300, configurable=True)
+gen.add("max_velocity", paramtype="double", description="The maximum virtual velocity that a virtual force of any intensity can cause. Keep it equal to the maximum velocity of the controller for regual behaviour. Together with the maximum virtual force it defines the gain K of the PT1 element (mass-damping-system): K = 1 / damping_intensity = max_velocity / max_force",  default=0.8, min=0.3, max=1.80, configurable=True)
+#max_velocity is here an absoulte value while in fts_controller is is set separatly for x and y direction. |v|=sqrt(2)*max_velocity_xy. Same for max_force and compensation_reference_velocity!
+gen.add("time_const_T", paramtype="double", description="Time constant T of the PT1 element (mass-damping-system) for the virtual forces. From a standstill the robot would accelerate within 3*T to 0.95*max_velocity.",  default=0.75, min=0.0, max=5.0, configurable=True)
+gen.add("controller_update_rate", paramtype="double", description="Controller update rate. Should be the same as <controller-ns>/Controller/update_rate.",  default=100.0, min=1, max=200.0, configurable=True)
+
+#Syntax : Package, Node, Config Name(The final name will be MyDummyConfig)
+exit(gen.generate("robotrainer_modalities", "robotrainer_modalities", "VirtualForces"))

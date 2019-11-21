@@ -1,0 +1,12 @@
+/**
+\mainpage
+The robotrainer modalities plugins.  
+
+Plugins available:
+- VirtualForces: The effect of virtual/artificial forces that are defined in specified areas is added to the velocity wrench of the robot.
+- VirtualWalls: TODO
+- PathTracking: TODO
+- VirtualAreas: TODO
+
+\authors Peter Wern: urduq@student.kit.edu, Denis Štogl: denis.stogl@kit.edu
+*/

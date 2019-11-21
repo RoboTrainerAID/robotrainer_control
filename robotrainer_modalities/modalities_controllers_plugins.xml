@@ -1,0 +1,33 @@
+<library path="lib/librobotrainer_modalities">
+        
+        <!---base modalities--->
+        <class name="robotrainer_modalities/VirtualForces" type="robotrainer_modalities::VirtualForces<geometry_msgs::Twist>" base_class_type="robotrainer_modalities::ModalityBase<geometry_msgs::Twist>">
+                <description>This is the virtual forces plugin.</description>
+        </class>
+        
+         <class name="robotrainer_modalities/VirtualWalls" type="robotrainer_modalities::VirtualWalls<geometry_msgs::Twist>" base_class_type="robotrainer_modalities::ModalityBase<geometry_msgs::Twist>">
+                <description>This is the virtual walls plugin.</description>
+        </class>
+        
+        <class name="robotrainer_modalities/PathTracking" type="robotrainer_modalities::PathTracking<geometry_msgs::Twist>" base_class_type="robotrainer_modalities::ModalityBase<geometry_msgs::Twist>">
+        <description>This is the virtual walls plugin.</description>
+        </class>
+        
+        <class name="robotrainer_modalities/VirtualAreas" type="robotrainer_modalities::VirtualAreas<geometry_msgs::Twist>" base_class_type="robotrainer_modalities::ModalityBase<geometry_msgs::Twist>">
+                <description>This is the virtual areas plugin.</description>
+        </class>
+        
+        <!---Controller modalities--->
+        <class name="robotrainer_modalities/ModalitiesVirtualForcesController" type="robotrainer_modalities::ModalitiesVFController<robotrainer_helper_types::wrench_twist>" base_class_type="robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>">
+                <description>This is the controller for the virtual Forces.</description>
+        </class>
+        
+        <class name="robotrainer_modalities/ModalitiesVirtualWallsController" type="robotrainer_modalities::ModalitiesVirtualWallsController<robotrainer_helper_types::wrench_twist>" base_class_type="robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>">
+                <description>This is the controller for the virtual Forces.</description>
+        </class>
+        
+        <class name="robotrainer_modalities/ModalitiesPathTrackingController" type="robotrainer_modalities::ModalitiesPathTrackingController<robotrainer_helper_types::wrench_twist>" base_class_type="robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>">
+                <description>This is the controller for the virtual Forces.</description>
+        </class>
+        
+</library>

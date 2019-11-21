@@ -1,0 +1,9 @@
+<library path="lib/librobotrainer_panel"> <!--Named this way automaically by Catkin, if name is of package is "robotrainer_editor_panel"-->
+  <class name="robotrainer_editor_panel/RobotrainerEditorPanel"
+         type="robotrainer_editor_panel::RobotrainerEditorPanel"
+         base_class_type="rviz::Panel">
+    <description>
+      A RViz plugin panel for the RobotrainerEditor project
+    </description>
+  </class>
+</library>

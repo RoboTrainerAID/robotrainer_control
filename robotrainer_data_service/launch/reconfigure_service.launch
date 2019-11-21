@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+
+    <node pkg="sr2_reconfigure_service" type="reconfigure_max_speed_srv" name="reconfigure_max_speed_srv" output="screen" ns="/robotrainer">
+    </node>
+
+</launch>
