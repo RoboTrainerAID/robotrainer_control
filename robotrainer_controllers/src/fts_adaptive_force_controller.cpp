@@ -264,7 +264,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
         std::array<double, 3> vel_percent = getOldVelocityPercent();
         std::array<double, 3> fts_input_raw = FTSBaseController::getFTSInput(current_loop_time_);
         pub_force_raw_.publish(convertToMessage(fts_input_raw));
-        pub_force_raw_lim_.publish(convertToMessage(FTSBaseController::getScaledLimitedFTSInput(fts_input_raw)));
+//         pub_force_raw_lim_.publish(convertToMessage(FTSBaseController::getScaledLimitedFTSInput(fts_input_raw)));
         
         
         if (parametrization_active_) {
@@ -364,11 +364,11 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
         std::array<double,3> scaledLimitedFTSInput = FTSBaseController::getScaledLimitedFTSInput(fts_input_raw);
         pub_force_adapt_lim_.publish(convertToMessage(scaledLimitedFTSInput));
         
-        std::array<double,3> baseScaledInput;
-        for (int i = 0; i < 3; i ++) {
-                baseScaledInput[i] = scaledLimitedFTSInput[i] * base_max_ft_[i];
-        }
-        pub_force_adapt_base_scaled_.publish(convertToMessage(baseScaledInput));
+//         std::array<double,3> baseScaledInput;
+//         for (int i = 0; i < 3; i ++) {
+//                 baseScaledInput[i] = scaledLimitedFTSInput[i] * base_max_ft_[i];
+//         }
+//         pub_force_adapt_base_scaled_.publish(convertToMessage(baseScaledInput));
         
         
         if (use_passive_behavior_ctrlr_) {
@@ -376,7 +376,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 std::array<double, 3> passive_filtered_input = passive_behavior_ctrl_->updateWithInputs(current_loop_time_, period, scaledLimitedFTSInput, timeSinceRelease);
                 FTSBaseController::setForceInput( passive_filtered_input );
                 FTSBaseController::update(current_loop_time_, period);
-                passive_behavior_ctrl_->updateBaseControllerValues(current_loop_time_, getOldVelocity(), getOldForce() );
+                passive_behavior_ctrl_->updateBaseControllerValues(current_loop_time_, fts_input_raw, getOldVelocity() );
         } else {
                 FTSBaseController::setForceInput( scaledLimitedFTSInput );
                 FTSBaseController::update(current_loop_time_, period);

@@ -35,15 +35,15 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         fts_base_ctrl_nh.param<double>("rot_time_const", time_const_[2], 1000000.0);
         
         /* Control actions */
-                //Adapting center of gravity
-                fts_base_ctrl_nh.param<bool>("global_control_actions/adaptive_cog/adapt_cog", adapt_center_of_gravity_, false);
-                fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cog/cog_x", cog_x_, 0.0);
-                fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cog/cog_y", cog_y_, 0.0);
-                //global counterforce enabled by default
-                fts_base_ctrl_nh.param<bool>("global_control_actions/global_counterforce/enabled", enableCounterForce_, false);
-                fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_x", staticCounterForce_[0], 0.0);
-                fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_y", staticCounterForce_[1], 0.0);
-                fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/countertorque_z", staticCounterForce_[2], 0.0);
+        //Adapting center of gravity
+        fts_base_ctrl_nh.param<bool>("global_control_actions/adaptive_cog/adapt_cog", adapt_center_of_gravity_, false);
+        fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cog/cog_x", cog_x_, 0.0);
+        fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cog/cog_y", cog_y_, 0.0);
+        //global counterforce enabled by default
+        fts_base_ctrl_nh.param<bool>("global_control_actions/global_counterforce/enabled", enableCounterForce_, false);
+        fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_x", staticCounterForce_[0], 0.0);
+        fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_y", staticCounterForce_[1], 0.0);
+        fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/countertorque_z", staticCounterForce_[2], 0.0);
 
         fts_base_ctrl_nh.param<bool>("simulate", simulate_, true);
         
@@ -777,7 +777,7 @@ double FTSBaseController::getTimeSinceReleasingRobot( const ros::Time& time ) {
 
 /**
 * \brief Returns the force which was used for the last update loop calculation
-* \
+*/
 std::array<double, 3> FTSBaseController:: getOldForce() {
         std::array<double, 3 > force_old;
         for(int i = 0 ; i < 3 ; ++i){
@@ -796,7 +796,7 @@ std::array<double, 3> FTSBaseController:: getOldForcePercent() {
 
 /**
  * \brief Returns the velocity which was used for the last update loop calculation
- * \
+ */
 std::array<double, 3> FTSBaseController::getOldVelocity() {
         std::array<double, 3> velocity_old;
         for(int i = 0; i < 3; ++i){

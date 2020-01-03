@@ -29,6 +29,7 @@ public:
         virtual void initInChain(ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh);
         void setValuesFromBaseController(std::array<double, 3> gain, std::array<double, 3> time_const);
         std::array<double, 3> updateWithInputs( const ros::Time& time, const ros::Duration& period, std::array<double, 3> ftsInput, double timeSinceRelease );
+        // Function to update values to call from inherited classes
         void updateBaseControllerValues( const ros::Time& time, std::array<double, 3> oldForce, std::array<double, 3> oldVelocity );
     
 private:
@@ -72,7 +73,7 @@ private:
         std::array<double, dim> scaled_input_{ {0.0, 0.0, 0.0} };
         std::array<double, dim> old_force_{ {0.0, 0.0, 0.0} };
         std::array<double, dim> old_velocity_{ {0.0, 0.0, 0.0} };
-        std::array<double, dim>desired_mass_;
+        std::array<double, dim> desired_mass_;
 
         //reconfigureable params
         std::array<double, dim> desired_adaption_factor_;
@@ -110,6 +111,7 @@ private:
         //same direction detection
         bool conditionalInstabilityDetection_;
         std::array<bool, dim> changedDirection_;
+        std::array<bool, dim> multipleDirectionChange_;
         std::array<std::list<int>, dim> slidingDirections_; // 1 stands for positive velocity, 0 for no velocity and -1 for negative
         int directionWindowSize_;
         std::array<int, dim> sameDirectionCtr_;

@@ -266,7 +266,7 @@ public:
 class ChuyIntegralMultiDim : public IntegralMultiDimBase {
 public:
         ChuyIntegralMultiDim() {
-                        resetIntegralValues();
+            resetIntegralValues();
         }
         
         std::array<double, DIM> calculateIntegralMultiDim(std::array<double,DIM> x, std::array<double,DIM> y, const ros::Time& time) {
