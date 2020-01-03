@@ -70,20 +70,24 @@ void PassiveBehaviorControllerBase::starting(const ros::Time& time) {
 void PassiveBehaviorControllerBase::resetValues() {
         
         ROS_INFO("[PASS BHV] Reset Values!");
+        chuy_MD_ptr_->resetIntegralValues();
+        integral_ptr_->resetIntegral();
+        integral_MD_ptr_->resetIntegral();
+        
         scale_down_ = false;
         scale_up_ = false;
         for (int i = 0; i < 3; i++) {
-                scale_down_MD_[i] = false;
-                scale_up_MD_[i] = false;
-                adaption_factor_[i] = 1.0;
-                adaption_factor_old_[i] = 1.0;
-                ignoringImpassiveBehavior_[i] = false;
-                changedDirection_[i] = false;
-                stableDuration_[i] = 0.0;
-                resetToStability_Countdown_[i] = 0.0;
-                instableDuration_[i] = 0.0;
-                sameDirectionCtr_[i] = 0.0;
-                deactivateAllDimensions_ = false;
+            scale_down_MD_[i] = false;
+            scale_up_MD_[i] = false;
+            adaption_factor_[i] = 1.0;
+            adaption_factor_old_[i] = 1.0;
+            ignoringImpassiveBehavior_[i] = false;
+            changedDirection_[i] = false;
+            stableDuration_[i] = 0.0;
+            resetToStability_Countdown_[i] = 0.0;
+            instableDuration_[i] = 0.0;
+            sameDirectionCtr_[i] = 0.0;
+            deactivateAllDimensions_ = false;
         }
         fresh_resetted_ = true;
         resetSlidingVelocities();
@@ -145,86 +149,106 @@ bool PassiveBehaviorControllerBase::detectedNonPassiveBehavior_MD() {
 
 void PassiveBehaviorControllerBase::updateIntegrals(const std::array<double, dim>& force, const std::array<double, dim>& velocity, const ros::Time& time) {
         
-        //direction change detection
-        for (auto i = 0; i < dim; i++) {
-                if (!control_dimensions_[i]) { continue; }
-                int currentDirection = (velocity[i] > 0.0) ? 1 : ((velocity[i] < 0.0) ? -1 : 0);
-                if (currentDirection * slidingDirections_[i].back() == 1) {
-                        sameDirectionCtr_[i]++;
-                } else {
-                        sameDirectionCtr_[i] = 0;
-                }
-                slidingDirections_[i].push_back(currentDirection);
-                //move window
-                int oldestDirection = slidingDirections_[i].front();
-                slidingDirections_[i].pop_front();                
-                changedDirection_[i] = changedDirection_[i] || ((oldestDirection * currentDirection ) == -1);
-                if (sameDirectionCtr_[i] > (2 * directionWindowSize_)) {
-                        changedDirection_[i] = false;
-                        sameDirectionCtr_[i] = 2 * directionWindowSize_;
-                }
+    //direction change detection
+    for (auto i = 0; i < dim; i++) {
+        if (!control_dimensions_[i]) { continue; }
+        int currentDirection = (velocity[i] > 0.0) ? 1 : ((velocity[i] < 0.0) ? -1 : 0);
+        if (currentDirection * slidingDirections_[i].back() == 1) {
+                sameDirectionCtr_[i]++;
+        } else {
+                sameDirectionCtr_[i] = 0;
         }
-        
-        old_velocity_ = velocity;
-        
-        std::array<double, dim> integral_values;
-        
-        switch (usedMethod_) {
+        slidingDirections_[i].push_back(currentDirection);
+        //move window
+        int oldestDirection = slidingDirections_[i].front();
+        slidingDirections_[i].pop_front();                
+        changedDirection_[i] = changedDirection_[i] || ((oldestDirection * currentDirection ) == -1);
+        if (changedDirection_[i] and sameDirectionCtr_[i] == 0)
+        {
+            ROS_WARN("[DIM %d] - Multiple Direcation Changes Detected!", i);
+            multipleDirectionChange_[i] = true;
+        }
+        if (sameDirectionCtr_[i] > (2 * directionWindowSize_)) {
+                changedDirection_[i] = false;
+                sameDirectionCtr_[i] = 2 * directionWindowSize_;
+        }
+    }
+    
+    old_velocity_ = velocity;
+    
+    std::array<double, dim> integral_values;
+    
+    //FOR evaluation (publishing should be reduced) - move to switch
+    integral_values = chuy_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+    //publish values
+    geometry_msgs::Vector3 chuyIntegral3d_msg;
+    chuyIntegral3d_msg.x = integral_values[0];
+    chuyIntegral3d_msg.y = integral_values[1];
+    chuyIntegral3d_msg.z = integral_values[2];
+    ChuyIntegral3d_pub_.publish(chuyIntegral3d_msg);
+    
+    integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+    //publish values
+    slidingIntegral3d_msg_.x = integral_values[0];
+    slidingIntegral3d_msg_.y = integral_values[1];
+    slidingIntegral3d_msg_.z = integral_values[2];
+    SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
+    
+    switch (usedMethod_) {                
+            case chuy2007:
+            {
+//                         integral_values = chuy_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+//                         //publish values
+//                         geometry_msgs::Vector3 chuyIntegral3d_msg;
+//                         chuyIntegral3d_msg.x = integral_values[0];
+//                         chuyIntegral3d_msg.y = integral_values[1];
+//                         chuyIntegral3d_msg.z = integral_values[2];
+//                         ChuyIntegral3d_pub_.publish(chuyIntegral3d_msg);
                 
-                case chuy2007:
-                {
-                        integral_values = chuy_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-                        //publish values
-                        geometry_msgs::Vector3 chuyIntegral3d_msg;
-                        chuyIntegral3d_msg.x = integral_values[0];
-                        chuyIntegral3d_msg.y = integral_values[1];
-                        chuyIntegral3d_msg.z = integral_values[2];
-                        ChuyIntegral3d_pub_.publish(chuyIntegral3d_msg);
-                        
-                        //FOR RECORDING PURPOSE
-                        slidingIntegralVal_msg_.data = sumArray(chuy_MD_ptr_->getIntegralValues());
-                        SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                        break;
-                }
-                case slidingSD:
-                {
-                        integral_ptr_->calculateIntegral(force, velocity, time);
-                        double slidingIntegralValueWeight = integral_ptr_->getIntegralValue();
-                        //pubilsh Values
-                        slidingIntegralVal_msg_.data = slidingIntegralValueWeight;
-                        SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                        break;
-                }
-                case slidingMD:
-                {
-                        integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-                        //publish values
-                        slidingIntegral3d_msg_.x = integral_values[0];
-                        slidingIntegral3d_msg_.y = integral_values[1];
-                        slidingIntegral3d_msg_.z = integral_values[2];
-                        SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
-                        
-                        //FOR RECORDING PURPOSE
-                        slidingIntegralVal_msg_.data = sumArray(integral_MD_ptr_->getIntegralValues());
-                        SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                        break;
-                }
-                default: 
-                {
-                        //switch state or not used, update both for comparison
-                        double slidingIntegralValueWeight = integral_ptr_->calculateIntegral(force, velocity, time);
-                        //pubilsh Values
-                        slidingIntegralVal_msg_.data = slidingIntegralValueWeight;
-                        SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                        integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-                        //publish values
-                        slidingIntegral3d_msg_.x = integral_values[0];
-                        slidingIntegral3d_msg_.y = integral_values[1];
-                        slidingIntegral3d_msg_.z = integral_values[2];
-                        SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
-                        break;
-                }
-        }
+//                         //FOR RECORDING PURPOSE - NOT NEEDED?
+//                         slidingIntegralVal_msg_.data = sumArray(chuy_MD_ptr_->getIntegralValues());
+//                         SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
+                    break;
+            }
+            case slidingSD:
+            {
+                    integral_ptr_->calculateIntegral(force, velocity, time);
+                    double slidingIntegralValueWeight = integral_ptr_->getIntegralValue();
+                    //pubilsh Values
+                    slidingIntegralVal_msg_.data = slidingIntegralValueWeight;
+                    SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
+                    break;
+            }
+            case slidingMD:
+            {
+//                         integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+//                         //publish values
+//                         slidingIntegral3d_msg_.x = integral_values[0];
+//                         slidingIntegral3d_msg_.y = integral_values[1];
+//                         slidingIntegral3d_msg_.z = integral_values[2];
+//                         SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
+                
+                    //FOR RECORDING PURPOSE
+//                         slidingIntegralVal_msg_.data = sumArray(integral_MD_ptr_->getIntegralValues());
+//                         SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
+                    break;
+            }
+            default: 
+            {
+                    //switch state or not used, update both for comparison
+//                         double slidingIntegralValueWeight = integral_ptr_->calculateIntegral(force, velocity, time);
+//                         //pubilsh Values
+//                         slidingIntegralVal_msg_.data = slidingIntegralValueWeight;
+//                         SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
+//                         integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+//                         //publish values
+//                         slidingIntegral3d_msg_.x = integral_values[0];
+//                         slidingIntegral3d_msg_.y = integral_values[1];
+//                         slidingIntegral3d_msg_.z = integral_values[2];
+//                         SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
+                    break;
+            }
+    }
 }
 
 double PassiveBehaviorControllerBase::scaleDownLinear_MD(const double& desired_adaption_factor, const double& current_adaption_factor, const ros::Time& scale_down_start_time, const double& start_value) {
@@ -319,16 +343,21 @@ std::array<double, 3> PassiveBehaviorControllerBase::calcCurrentAdaptionFactor_t
                         continue;
                 }
                 
-                //robot is instable
+                //robot is unstable
                 if ( integral_values[i] < instable_threshold_value_[i] ) {
                          
-                        if (conditionalInstabilityDetection_ && changedDirection_[i] && (stableDuration_[i] > minimumStableDuration_) ) {
-                                 ROS_WARN("[DIM %d] - Flagging ignore on first Instability!", i);
-                                 scale_down_MD_[i] = false;
-                                 scale_up_MD_[i] = false;
-                                 adaption_factor[i] = max_adaption_factor_;
-                                 changedDirection_[i] = false;
-                                 ignoringImpassiveBehavior_[i] = true; // flag currently ignoring impassivity
+                        //if (conditionalInstabilityDetection_ && changedDirection_[i] && (stableDuration_[i] > minimumStableDuration_) ) {
+                        if (conditionalInstabilityDetection_ && changedDirection_[i] && !multipleDirectionChange_[i]) {
+                            ROS_WARN("[DIM %d] - Flagging ignore on first Instability!", i);
+                            scale_down_MD_[i] = false;
+                            scale_up_MD_[i] = false;
+                            adaption_factor[i] = max_adaption_factor_;
+                            changedDirection_[i] = false;
+                            ignoringImpassiveBehavior_[i] = true; // flag currently ignoring impassivity
+                         }
+                         
+                         if (conditionalInstabilityDetection_ && changedDirection_[i] && multipleDirectionChange_[i]) {
+                            ignoringImpassiveBehavior_[i] = false;
                          }
                          
                          stableDuration_[i] = 0.0;
@@ -355,7 +384,7 @@ std::array<double, 3> PassiveBehaviorControllerBase::calcCurrentAdaptionFactor_t
                                 
                                 //check if robot was instable for too long
                                 if (conditionalInstabilityDetection_ && (instableDuration_[i] >= extremelyInstableDuration_)) {
-                                        ROS_WARN_THROTTLE(0.1, "[DIM %d] - ROBOT CURRENTLY EXTREMELY INSTABLE ! DEACTIVATING DIMENSION UNTIL USER RELEASES ROBOT OR DIMENSION IS LONG ENOUGH STABLE", i);
+                                        ROS_WARN_THROTTLE(0.2, "[DIM %d] - ROBOT CURRENTLY EXTREMELY INSTABLE ! DEACTIVATING DIMENSION UNTIL USER RELEASES ROBOT OR DIMENSION IS LONG ENOUGH STABLE", i);
                                         instableDuration_[i] = extremelyInstableDuration_;
                                         resetToStability_Countdown_[i] = resetCooldownAfterInstability_;
                                         adaption_factor[i] = 0.0;
@@ -374,10 +403,10 @@ std::array<double, 3> PassiveBehaviorControllerBase::calcCurrentAdaptionFactor_t
                         //check if robot was previously extremely instable, and only scale up after the countdown has finished
                         if (resetToStability_Countdown_[i] > timeDelta) {
                                 resetToStability_Countdown_[i] -= timeDelta;
-                                ROS_INFO("[DIM %d] - Robot was previously extremely unstable, currently [%.2f sec.] cooldown remaining before activating this dimension again!", i, resetToStability_Countdown_[i]);
+                                ROS_WARN_THROTTLE(0.2, "[DIM %d] - Robot was previously extremely unstable, currently [%.2f sec.] cooldown remaining before activating this dimension again!", i, resetToStability_Countdown_[i]);
                                 continue; // break this loop to ignore stability while on cooldown
                         } else if (resetToStability_Countdown_[i] > 0.0) {
-                                ROS_INFO("[DIM %d] - Robot was previously extremely unstable but will be reactivated after the cooldown phase!", i);
+                                ROS_WARN_THROTTLE(0.2, "[DIM %d] - Robot was previously extremely unstable but will be reactivated after the cooldown phase!", i);
                                 adaption_factor_old_[i] = min_adaption_factor_;
                                 resetToStability_Countdown_[i] = 0.0;
                                
@@ -393,10 +422,10 @@ std::array<double, 3> PassiveBehaviorControllerBase::calcCurrentAdaptionFactor_t
                         
                         //check if robot was stable for long enough to reset instableDuration
                         if (stableDuration_[i] > minimumStableDuration_) {
-                                instableDuration_[i] = 0.0;
-                                stableDuration_[i] = minimumStableDuration_ + 0.1;
-                        }
-                        
+                            multipleDirectionChange_[i] = false;
+                            instableDuration_[i] = 0.0;
+                            stableDuration_[i] = minimumStableDuration_ + 0.1;
+                        }                        
                         
                         //adaption factor is less than max, so adaption factor gets scaled back to max
                         if(adaption_factor_old_[i] < max_adaption_factor_) {
@@ -478,14 +507,14 @@ std::array<double, 3> PassiveBehaviorControllerBase::calcCurrentAdaptionFactor_t
 
 void PassiveBehaviorControllerBase::update(const ros::Time& time, const ros::Duration& period) {
         //get input
-        scaled_input_ = FTSBaseController::getScaledLimitedFTSInput(FTSBaseController::getFTSInput(time));
-        std::array<double, 3> behaviorAdaptedForce = updateWithInputs(time, period, scaled_input_, FTSBaseController::getTimeSinceReleasingRobot(time) );
+        std::array<double, 3> fts_input_raw = FTSBaseController::getFTSInput(time);
+        std::array<double, 3> behaviorAdaptedForce = updateWithInputs(time, period, FTSBaseController::getScaledLimitedFTSInput(fts_input_raw), FTSBaseController::getTimeSinceReleasingRobot(time) );
         
         FTSBaseController::setForceInput(behaviorAdaptedForce);
         FTSBaseController::update(time, period); //send to BaseController
 
         //calculate Energy of system
-        updateIntegrals(FTSBaseController::getOldForce(), FTSBaseController::getOldVelocity(), time);
+        updateIntegrals(fts_input_raw, FTSBaseController::getOldVelocity(), time);
 }
 
 std::array<double, 3> PassiveBehaviorControllerBase::updateWithInputs( const ros::Time& time, const ros::Duration& period, std::array<double, 3> scaled_fts_input, double timeSinceRelease) {
@@ -525,29 +554,27 @@ std::array<double, 3> PassiveBehaviorControllerBase::updateWithInputs( const ros
         switch (usedMethod_) {
                 case slidingSD: 
                         adaption_factor_old_ = calcCurrentAdaptionFactor_time(time);
-                        adaptionFactor_msg_.x = adaption_factor_old_[0];
-                        adaptionFactor_msg_.y = adaption_factor_old_[1];
-                        adaptionFactor_msg_.z = adaption_factor_old_[2];
-                        Adaptionfactor_pub_.publish(adaptionFactor_msg_);
                         behaviorAdaptedInput = adaptInputForce(adaption_factor_old_, scaled_fts_input);
                         break;
                 case slidingMD: case chuy2007:
                         adaption_factor_old_ = calcCurrentAdaptionFactor_time_MD(time, current_power_);
-                        adaptionFactor_msg_.x = adaption_factor_old_[0];
-                        adaptionFactor_msg_.y = adaption_factor_old_[1];
-                        adaptionFactor_msg_.z = adaption_factor_old_[2];
-                        Adaptionfactor_pub_.publish(adaptionFactor_msg_);
                         behaviorAdaptedInput = adaptInputForce(adaption_factor_old_, scaled_fts_input);
                         break;
                 default:
-                        ROS_WARN_THROTTLE(0.1, "[Passive Behavior] - Update called but no integral style active");
+                        ROS_WARN_ONCE("[Passive Behavior] - Update called but no integral style active");
         }
+        
+        adaptionFactor_msg_.x = adaption_factor_old_[0];
+        adaptionFactor_msg_.y = adaption_factor_old_[1];
+        adaptionFactor_msg_.z = adaption_factor_old_[2];
+        Adaptionfactor_pub_.publish(adaptionFactor_msg_);
         
         lastloopTime_ = time;
         
         return behaviorAdaptedInput;
 }
 
+// Function to update values to call from inherited classes
 void PassiveBehaviorControllerBase::updateBaseControllerValues( const ros::Time& time, std::array<double, 3> oldForce, std::array<double, 3> oldVelocity) {
         
         updateIntegrals(oldForce, oldVelocity, time);
@@ -560,8 +587,6 @@ void PassiveBehaviorControllerBase::stopping(const ros::Time& /*time*/) {
 
 void PassiveBehaviorControllerBase::resetController() {
         resetValues();
-        integral_ptr_->resetIntegral();
-        integral_MD_ptr_->resetIntegral();
         FTSBaseController::resetController();
 }
 
@@ -601,6 +626,7 @@ void PassiveBehaviorControllerBase::reconfigureCallback(robotrainer_controllers:
                 usedMethod_ = chuy2007;
                 ROS_INFO("USING: Chuy2007Integral");
                 conditionalInstabilityDetection_ = false;
+                chuy_MD_ptr_.reset(new robotrainer_helper_types::ChuyIntegralMultiDim{});
         } else if (methodToUse == 2) {
                 usedMethod_ = slidingSD;
                 conditionalInstabilityDetection_ =false;
