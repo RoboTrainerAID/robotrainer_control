@@ -6,10 +6,10 @@ FTSAdaptiveForceController::FTSAdaptiveForceController(){}
 
 bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh) {   
         
-        if (!FTSBaseController::init(robot_hw, root_nh, controller_nh)) { //init base controller if yet unitialized
-                ROS_INFO("[ADAPT - INIT] Initializing FTSBaseController first...");
+        if (!FTSBaseController::init(robot_hw, root_nh, controller_nh)) { // init base controller if yet not initialized
+                ROS_FATAL("Initializing FTSBaseController went wrong... Can not continue...");
         }
-        ROS_INFO("[ADAPT - INIT] Init FTSAdaptiveForceController!");
+        ROS_INFO("Init FTSAdaptiveForceController!");
         setBaseValues(); 
         
         /* get Parameters from rosparam server (stored on yaml file) */
@@ -100,9 +100,13 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
         
         /* Blinky LED initialization */
                 led_ac_ = new actionlib::SimpleActionClient<iirob_led::BlinkyAction>("/rosy_test/leds_rectangle/blinky", true);
-                led_ac_->waitForServer();
-                pub_input_force_for_led_ = root_nh.advertise<geometry_msgs::WrenchStamped>("/rosy_test/leds_rectangle/led_force", 1);
-                ROS_INFO("[ADAPT - INIT] LED actionclient registered");
+                if (led_ac_->waitForServer(ros::Duration(2))) {
+                    pub_input_force_for_led_ = root_nh.advertise<geometry_msgs::WrenchStamped>("/rosy_test/leds_rectangle/led_force", 1);
+                    ROS_INFO("[ADAPT - INIT] LED actionclient registered");
+                }
+                else {
+                    ROS_WARN("Action server for LED-Rectangle not started and it will not be used!");
+                }
                 
         { /* Initialize Blinky messages */
                 blinkyStartGreen_.color.r = 0.0;
@@ -260,7 +264,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
         current_loop_time_ = time;
         
         //get inputs for the next update loop
-        ROS_WARN_COND(!running_, "Base Controller is not running ATM");
+        ROS_WARN_COND(!running_, "Base Controller is not running at the moment!");
         std::array<double, 3> vel_percent = getOldVelocityPercent();
         std::array<double, 3> fts_input_raw = FTSBaseController::getFTSInput(current_loop_time_);
         pub_force_raw_.publish(convertToMessage(fts_input_raw));
@@ -1047,7 +1051,7 @@ void FTSAdaptiveForceController::sendLEDForceTopics() {
         
         geometry_msgs::WrenchStamped real_wrench_msg;
         real_wrench_msg.header.stamp = ros::Time::now();
-        real_wrench_msg.header.frame_id = roboter_.getFrameId();
+        real_wrench_msg.header.frame_id = hw_fts_.getFrameId();
         real_wrench_msg.wrench.force.x = 0.0;
         real_wrench_msg.wrench.force.y = 0.0;
         real_wrench_msg.wrench.torque.z = 0.0;

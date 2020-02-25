@@ -1,6 +1,7 @@
 #ifndef ROBOTRAINER_CONTROLLERS_FTS_ADAPTIVE_FORCE_CONTROLLER_H
 #define ROBOTRAINER_CONTROLLERS_FTS_ADAPTIVE_FORCE_CONTROLLER_H
 
+#include <numeric>
 
 #include <robotrainer_controllers/fts_controller.h>
 #include <robotrainer_controllers/passive_behavior_controller.h>

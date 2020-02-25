@@ -98,7 +98,7 @@ namespace robotrainer_controllers {
                                 }
                                 // these function don't get locked
                                 void setForAll(cob_omni_drive_controller::SteerCtrlConfig &config, uint32_t /*level*/) {
-                                        ROS_INFO("configure all steers: s: %lf, d: %lf, m: %lf, v: %lf, a: %lf", config.spring, config.damp, config.virt_mass, config.d_phi_max, config.dd_phi_max);
+//                                         ROS_INFO("configure all steers: s: %lf, d: %lf, m: %lf, v: %lf, a: %lf", config.spring, config.damp, config.virt_mass, config.d_phi_max, config.dd_phi_max);
                                         for(size_t i=0; i< pos_ctrl_params.size(); ++i) {
                                                 copy(pos_ctrl_params[i], config);
                                                 if(!reconfigure_server_axes_.empty()){
@@ -109,7 +109,7 @@ namespace robotrainer_controllers {
                                         updated = true;
                                 }
                                 void setForOne(size_t i, cob_omni_drive_controller::SteerCtrlConfig &config, uint32_t /*level*/) {
-                                        ROS_INFO("configure steer %d: s: %lf, d: %lf, m: %lf, v: %lf, a: %lf", (int)i, config.spring, config.damp, config.virt_mass, config.d_phi_max, config.dd_phi_max);
+//                                         ROS_INFO("configure steer %d: s: %lf, d: %lf, m: %lf, v: %lf, a: %lf", (int)i, config.spring, config.damp, config.virt_mass, config.d_phi_max, config.dd_phi_max);
                                         copy(pos_ctrl_params[i], config);
                                         updated = true;
                                 }
@@ -121,7 +121,7 @@ namespace robotrainer_controllers {
                 } pos_ctrl_;
         
         protected:
-                hardware_interface::ForceTorqueSensorHandle roboter_;
+                hardware_interface::ForceTorqueSensorHandle hw_fts_;
 
                 bool running_;
                 bool base_initialized_;
@@ -132,7 +132,7 @@ namespace robotrainer_controllers {
                 std::array<bool, 3> x_active_;
                 std::array<bool, 3> y_active_;
                 std::array<bool, 3> rot_active_ ;
-                std::array<bool, 3>  x_y_active_;
+                std::array<bool, 3> x_y_active_;
                 std::array<bool, 3> x_rot_active_;
                 std::array<bool, 3> y_rot_active_;
                 std::array<bool, 3> all_active_;
@@ -211,9 +211,13 @@ namespace robotrainer_controllers {
                 ros::ServiceClient dysrv_callback_service_;
                 bool base_reconfigured_flag_;
 
+                // Basic parameters
+                bool no_hw_output_;
+                double controllerUpdateRate_;
+                std::string controllerFrameId_;
+
                 // Input parameters
                 bool yReversed_, rotReversed_;
-                double controllerUpdateRate_;
                 double backwardsMaxForceScale_, backwardsMaxVelScale_;
 
                 std::array<bool, 3> use_controller_;
@@ -229,20 +233,19 @@ namespace robotrainer_controllers {
                 std::array<double, 3> a1_; //in order [x], [y], [torque]
                 std::array<double, 3> b1_; //in order [x], [y], [torque]
 
-                ros::Publisher pub_cmd_; 
+                ros::Publisher pub_cmd_;
 
                 boost::mutex mutex_;
-                
+
                 //iput for used for controlling in update()
                 std::array<double,3> force_input_;
 
                 std::array<double, 3> force_old_;
                 std::array<double, 3> velocity_old_;
-                
-                
+
+
                 double delta_vel_;
-                
-                bool simulate_;
+
                 ros::Publisher pub_res_vel_;
                 ros::Publisher pub_force_lim_;
                 

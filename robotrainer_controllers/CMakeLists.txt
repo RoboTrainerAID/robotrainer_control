@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(robotrainer_controllers)
 
-set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
 # Load catkin and all dependencies required for this package
 find_package(catkin REQUIRED COMPONENTS
     cob_base_controller_utils

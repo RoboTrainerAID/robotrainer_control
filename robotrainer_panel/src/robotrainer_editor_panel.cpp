@@ -1001,7 +1001,7 @@ void RobotrainerEditorPanel::dataServiceFetchFileList(){
             service_files.push_back(list.substr(0, pos));
             list.erase(0, pos + 1);
         }
-        for (s :service_files)
+        for (auto s :service_files)
         {
             service_file_combobox->addItem(QString::fromStdString(s), QString::fromStdString(s));
             ROS_INFO_STREAM("Added "+s+" to the File selection.");

@@ -4,17 +4,19 @@
 namespace robotrainer_controllers {
 FTSBaseController::FTSBaseController(){}
 bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh) {   
-        ROS_INFO("[Base] Init FTSBaseController!");
+        ROS_INFO("Init FTSBaseController!");
         wheel_params_t wheel_params;
         
         
         /* get Parameters from rosparam server (stored on yaml file) */
         ros::NodeHandle fts_base_ctrl_nh(controller_nh, "FTSBaseController");
+        fts_base_ctrl_nh.param<bool>("no_hw_output", no_hw_output_, true);
+        fts_base_ctrl_nh.param<double>("update_rate", controllerUpdateRate_, 1.0);
+        fts_base_ctrl_nh.param<std::string>("frame_id", controllerFrameId_, "base_link");
         fts_base_ctrl_nh.param<bool>("y_reversed", yReversed_, false);
         fts_base_ctrl_nh.param<bool>("rot_reversed", rotReversed_, false);
-        fts_base_ctrl_nh.param<double>("update_rate", controllerUpdateRate_, 1.0);
         fts_base_ctrl_nh.param<double>("backwards_max_force_scale", backwardsMaxForceScale_, 0.25);
-        fts_base_ctrl_nh.param<double>("backwards_max_vel_scale", backwardsMaxVelScale_, 0.25);    
+        fts_base_ctrl_nh.param<double>("backwards_max_vel_scale", backwardsMaxVelScale_, 0.25);
         fts_base_ctrl_nh.param<bool>("x_force_controller", use_controller_[0], false);
         fts_base_ctrl_nh.param<bool>("y_force_controller", use_controller_[1], false);
         fts_base_ctrl_nh.param<bool>("rot_controller", use_controller_[2], false);
@@ -33,7 +35,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         fts_base_ctrl_nh.param<double>("rot_max_rot_vel", max_vel_[2], 0.0);
         fts_base_ctrl_nh.param<double>("rot_gain", gain_[2], 1.0);
         fts_base_ctrl_nh.param<double>("rot_time_const", time_const_[2], 1000000.0);
-        
+
         /* Control actions */
         //Adapting center of gravity
         fts_base_ctrl_nh.param<bool>("global_control_actions/adaptive_cog/adapt_cog", adapt_center_of_gravity_, false);
@@ -45,7 +47,6 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_y", staticCounterForce_[1], 0.0);
         fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/countertorque_z", staticCounterForce_[2], 0.0);
 
-        fts_base_ctrl_nh.param<bool>("simulate", simulate_, true);
         
         base_reconfigured_flag_ = false;
         
@@ -80,9 +81,14 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
                 std::cout<<"null hw ptr"<<std::endl;
                 return false;
         }
-        roboter_ = robot_hw->get<hardware_interface::ForceTorqueSensorInterface>()->getHandle("ATI_45_Mini");
+        hw_fts_ = robot_hw->get<hardware_interface::ForceTorqueSensorInterface>()->getHandle("ATI_45_Mini");
         hardware_interface::VelocityJointInterface* hw_vel = robot_hw->get<hardware_interface::VelocityJointInterface>();
         if(!cob_omni_drive_controller::parseWheelParams(wheel_params, controller_nh) || !GeomController<UndercarriageCtrl>::init(hw_vel, wheel_params)) return false;
+
+        if (controllerFrameId_.compare(hw_fts_.getFrameId()) != 0) {
+            ROS_WARN("'frame_id' of input data is not equal to controllers frame!! Your controller will probably not work as expected! \nFTSBaseController is expecting data in '%s' frame, but input data frame is '%s'! You should probably correct this in configuration of your ForceTorqueSensorHandle.", controllerFrameId_.c_str(), hw_fts_.getFrameId().c_str());
+        }
+
          
         /* Set dynamic reconfigure */
         base_dysrv_ = new dynamic_reconfigure::Server<robotrainer_controllers::FTSBaseControllerConfig>(fts_base_ctrl_nh);
@@ -94,8 +100,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         /* Initialize Position control */
         pos_ctrl_.init(wheel_params, controller_nh);  
         
-        ROS_WARN_COND(simulate_, "SIMULATION MODE, NO OUTPUT TO REAL ROBOT!");
-        
+        ROS_WARN_COND(no_hw_output_, "SIMULATION MODE, NO OUTPUT TO REAL ROBOT!");
         
         /* Initialize Modalities */
         service_server_ = root_nh.advertiseService("configure_modalities", &FTSBaseController::configureModalitiesCallback, this);        
@@ -192,7 +197,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
                 
                 if((std::fabs(new_vel[0] - velocity_old_[0])<0.0001) && (std::fabs(new_vel[1] - velocity_old_[1])<0.0001) && (std::fabs(new_vel[2] - velocity_old_[2])<0.0001)){
                         target_.updated = false;
-                } else if (simulate_) {
+                } else if (no_hw_output_) {
                         ROS_WARN_THROTTLE(5.0, "[FTS_BASE_CTRLR] SIMULATION MODE, NO OUTPUT TO ROBOT, BUT SENDING VELOCITIES TO DEBUG TOPIC!");
                         target_.updated = false;
                 } else {
@@ -241,8 +246,8 @@ void FTSBaseController::stopping(const ros::Time& /*time*/) {
 */
 void FTSBaseController::resetController() {
         
-        ROS_WARN_COND(!simulate_, "[FTS_Base]: Reset (SIM OFF)");
-        ROS_WARN_COND(simulate_, "[FTS_Base]: Reset (SIM ON)!");
+        ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Reset (SIM OFF)");
+        ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Reset (SIM ON)!");
         
         discretizeController();
         // initialize variables
@@ -596,7 +601,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         
         ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
         
-        simulate_ = config.simulate_output;
+        no_hw_output_ = config.no_hw_output;
 
         if (config.apply_base_controller_params) {
                 ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
@@ -726,18 +731,17 @@ std::array<double, 3> FTSBaseController::getFTSInput( const ros::Time& time ) {
         geometry_msgs::WrenchStamped force_input;
         
         force_input.header.stamp = time;
-        force_input.header.frame_id = roboter_.getFrameId();
-        force_input.wrench.force.x  = roboter_.getForce()[0];
-        force_input.wrench.force.y  = roboter_.getForce()[1];
-        force_input.wrench.torque.z = roboter_.getTorque()[2];
+        force_input.header.frame_id = hw_fts_.getFrameId();
+        force_input.wrench.force.x  = hw_fts_.getForce()[0];
+        force_input.wrench.force.y  = hw_fts_.getForce()[1];
+        force_input.wrench.torque.z = hw_fts_.getTorque()[2];
         
         pub_wrench_lim_.publish(force_input);
         
         raw_fts_input[0] = force_input.wrench.force.x;
         raw_fts_input[1] = force_input.wrench.force.y;
         raw_fts_input[2] = force_input.wrench.torque.z;
-        
-        
+
         bool noInput = ( (raw_fts_input[0] == 0.0) && (raw_fts_input[1] == 0.0) && (raw_fts_input[2] == 0.0) );
         bool standingRobotNoInput = ( (delta_vel_ < 0.001) && (std::fabs(raw_fts_input[0]) < min_ft_[0]) && (std::fabs(raw_fts_input[1]) < min_ft_[1]) && (std::fabs(raw_fts_input[2]) < min_ft_[2]) );
         //no user grip detected in one frame, could be coincidence so count upwards
