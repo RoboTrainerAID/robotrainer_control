@@ -35,13 +35,7 @@ void PassiveBehaviorControllerBase::setValuesFromBaseController(std::array<doubl
 }
 
 void PassiveBehaviorControllerBase::initPublishersAndParameters(ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh) {
-        
-        SlidingIntegral_pub_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/pass_beh/SlidingIntegralVal",1);
-        Adaptionfactor_pub_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/pass_beh/AdaptionFactor",1);
-        RealInputforce_pub_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/pass_beh/RealInputforce",1);
-        SlidingIntegral3d_pub_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/pass_beh/SlidingIntegralVal3d",1);
-        ChuyIntegral3d_pub_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/pass_beh/ChuyIntegral3d", 1);
-        
+
         ros::NodeHandle passive_behavior_base_nh(controller_nh, "PassiveBehaviorControllerBase");
         //init default values
         passive_behavior_base_nh.param<int>("integral_window_size", integral_window_size_, 32);
@@ -56,6 +50,14 @@ void PassiveBehaviorControllerBase::initPublishersAndParameters(ros::NodeHandle 
         passive_behavior_base_nh.param<double>("scale_down_time", scale_down_time_, 0.4);
         passive_behavior_base_nh.param<double>("scale_up_time", scale_down_time_, 0.7);
         lastloopTime_ = ros::Time::now();
+
+        //debug initPublishersAndParameters
+        pub_sliding_integral_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "passive_SlidingIntegralVal",1);
+        pub_adaption_factor_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "passive_AdaptionFactor",1);
+        pub_real_input_force_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "passive_RealInputforce",1);
+        pub_sliding_integral_3d_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "passive_SlidingIntegralVal3d",1);
+        pub_chuy_integral_3d_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "passive_ChuyIntegral3d", 1);
+
         //get pointer for dynamic reconfigure
         p_dysrv_ = new dynamic_reconfigure::Server<robotrainer_controllers::PassiveBehaviorControllerConfig>(passive_behavior_base_nh);
         dynamic_reconfigure::Server<robotrainer_controllers::PassiveBehaviorControllerConfig>::CallbackType dycb =boost::bind(&PassiveBehaviorControllerBase::reconfigureCallback, this, _1, _2);
@@ -69,7 +71,7 @@ void PassiveBehaviorControllerBase::starting(const ros::Time& time) {
 
 void PassiveBehaviorControllerBase::resetValues() {
         
-        ROS_INFO("[PASS BHV] Reset Values!");
+        ROS_DEBUG("[PASS BHV] Reset Values!");
         chuy_MD_ptr_->resetIntegralValues();
         integral_ptr_->resetIntegral();
         integral_MD_ptr_->resetIntegral();
@@ -108,7 +110,7 @@ void PassiveBehaviorControllerBase::setDesiredMass() {
         
         for(auto i = 0;  i < dim ; ++i) {
                 desired_mass_[i] = time_const_[i] / gain_[i];
-                ROS_WARN("[passive_behavior_base_ctrl.cpp] desired_mass_[%i]: %.2f",i, desired_mass_[i]);
+                ROS_DEBUG("[passive_behavior_base_ctrl.cpp] desired_mass_[%i]: %.2f",i, desired_mass_[i]);
         }
 }
 
@@ -116,7 +118,7 @@ void PassiveBehaviorControllerBase::setDesiredAdaptionFactor_MD() {
         
         for(auto i = 0; i < dim; ++i) {
                 desired_adaption_factor_[i] = 1/(((system_const_*robot_virt_mass_)/(desired_mass_[i])) - system_const_);
-                ROS_WARN("[passive_behavior_base_ctrl.cpp] desired_adaption_factor_[%i]: %.2f", i, desired_adaption_factor_[i]);
+                ROS_DEBUG("[passive_behavior_base_ctrl.cpp] desired_adaption_factor_[%i]: %.2f", i, desired_adaption_factor_[i]);
         }
 }
 
@@ -174,80 +176,57 @@ void PassiveBehaviorControllerBase::updateIntegrals(const std::array<double, dim
         }
     }
     
+
     old_velocity_ = velocity;
-    
     std::array<double, dim> integral_values;
-    
-    //FOR evaluation (publishing should be reduced) - move to switch
-    integral_values = chuy_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-    //publish values
-    geometry_msgs::Vector3 chuyIntegral3d_msg;
-    chuyIntegral3d_msg.x = integral_values[0];
-    chuyIntegral3d_msg.y = integral_values[1];
-    chuyIntegral3d_msg.z = integral_values[2];
-    ChuyIntegral3d_pub_.publish(chuyIntegral3d_msg);
-    
-    integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-    //publish values
-    slidingIntegral3d_msg_.x = integral_values[0];
-    slidingIntegral3d_msg_.y = integral_values[1];
-    slidingIntegral3d_msg_.z = integral_values[2];
-    SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
-    
+
     switch (usedMethod_) {                
-            case chuy2007:
-            {
-//                         integral_values = chuy_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-//                         //publish values
-//                         geometry_msgs::Vector3 chuyIntegral3d_msg;
-//                         chuyIntegral3d_msg.x = integral_values[0];
-//                         chuyIntegral3d_msg.y = integral_values[1];
-//                         chuyIntegral3d_msg.z = integral_values[2];
-//                         ChuyIntegral3d_pub_.publish(chuyIntegral3d_msg);
-                
-//                         //FOR RECORDING PURPOSE - NOT NEEDED?
-//                         slidingIntegralVal_msg_.data = sumArray(chuy_MD_ptr_->getIntegralValues());
-//                         SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                    break;
+        case chuy2007:
+        {
+            integral_values = chuy_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+            //publish values
+            if (pub_chuy_integral_3d_->trylock()) {
+                pub_chuy_integral_3d_->msg_.x = integral_values[0];
+                pub_chuy_integral_3d_->msg_.y = integral_values[1];
+                pub_chuy_integral_3d_->msg_.z = integral_values[2];
+                pub_chuy_integral_3d_->unlockAndPublish();
             }
-            case slidingSD:
-            {
-                    integral_ptr_->calculateIntegral(force, velocity, time);
-                    double slidingIntegralValueWeight = integral_ptr_->getIntegralValue();
-                    //pubilsh Values
-                    slidingIntegralVal_msg_.data = slidingIntegralValueWeight;
-                    SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                    break;
+            break;
+        }
+        case slidingSD:
+        {
+            integral_ptr_->calculateIntegral(force, velocity, time);
+            //publish values
+            if (pub_sliding_integral_->trylock()) {
+                pub_sliding_integral_->msg_.data = integral_ptr_->getIntegralValue();
+                pub_sliding_integral_->unlockAndPublish();
             }
-            case slidingMD:
-            {
-//                         integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-//                         //publish values
-//                         slidingIntegral3d_msg_.x = integral_values[0];
-//                         slidingIntegral3d_msg_.y = integral_values[1];
-//                         slidingIntegral3d_msg_.z = integral_values[2];
-//                         SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
-                
-                    //FOR RECORDING PURPOSE
-//                         slidingIntegralVal_msg_.data = sumArray(integral_MD_ptr_->getIntegralValues());
-//                         SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-                    break;
+            break;
+        }
+
+        case slidingMD:
+        {
+
+            integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
+            //publish values
+            if (pub_sliding_integral_3d_->trylock()) {
+                pub_sliding_integral_3d_->msg_.x = integral_values[0];
+                pub_sliding_integral_3d_->msg_.y = integral_values[1];
+                pub_sliding_integral_3d_->msg_.z = integral_values[2];
+                pub_sliding_integral_3d_->unlockAndPublish();
             }
-            default: 
-            {
-                    //switch state or not used, update both for comparison
-//                         double slidingIntegralValueWeight = integral_ptr_->calculateIntegral(force, velocity, time);
-//                         //pubilsh Values
-//                         slidingIntegralVal_msg_.data = slidingIntegralValueWeight;
-//                         SlidingIntegral_pub_.publish(slidingIntegralVal_msg_);
-//                         integral_values = integral_MD_ptr_->calculateIntegralMultiDim(force, velocity, time);
-//                         //publish values
-//                         slidingIntegral3d_msg_.x = integral_values[0];
-//                         slidingIntegral3d_msg_.y = integral_values[1];
-//                         slidingIntegral3d_msg_.z = integral_values[2];
-//                         SlidingIntegral3d_pub_.publish(slidingIntegral3d_msg_);
-                    break;
+            //FOR RECORDING PURPOSE
+            if (pub_sliding_integral_->trylock()) {
+                pub_sliding_integral_->msg_.data = sumArray(integral_MD_ptr_->getIntegralValues());
+                pub_sliding_integral_->unlockAndPublish();
             }
+            break;
+        }
+
+        default:
+        {
+            break;
+        }
     }
 }
 
@@ -519,10 +498,12 @@ void PassiveBehaviorControllerBase::update(const ros::Time& time, const ros::Dur
 
 std::array<double, 3> PassiveBehaviorControllerBase::updateWithInputs( const ros::Time& time, const ros::Duration& period, std::array<double, 3> scaled_fts_input, double timeSinceRelease) {
         
-        realInputforce_msg_.x = scaled_fts_input[0];
-        realInputforce_msg_.y = scaled_fts_input[1];
-        realInputforce_msg_.z = scaled_fts_input[2];
-        RealInputforce_pub_.publish(realInputforce_msg_);
+        if (pub_real_input_force_->trylock()) {
+            pub_real_input_force_->msg_.x = scaled_fts_input[0];
+            pub_real_input_force_->msg_.y = scaled_fts_input[1];
+            pub_real_input_force_->msg_.z = scaled_fts_input[2];
+            pub_real_input_force_->unlockAndPublish();
+        }
         
         std::array<double,3> behaviorAdaptedInput = scaled_fts_input;
         
@@ -564,10 +545,12 @@ std::array<double, 3> PassiveBehaviorControllerBase::updateWithInputs( const ros
                         ROS_WARN_ONCE("[Passive Behavior] - Update called but no integral style active");
         }
         
-        adaptionFactor_msg_.x = adaption_factor_old_[0];
-        adaptionFactor_msg_.y = adaption_factor_old_[1];
-        adaptionFactor_msg_.z = adaption_factor_old_[2];
-        Adaptionfactor_pub_.publish(adaptionFactor_msg_);
+        if (pub_adaption_factor_->trylock()) {
+            pub_adaption_factor_->msg_.x = adaption_factor_old_[0];
+            pub_adaption_factor_->msg_.y = adaption_factor_old_[1];
+            pub_adaption_factor_->msg_.z = adaption_factor_old_[2];
+            pub_adaption_factor_->unlockAndPublish();
+        }
         
         lastloopTime_ = time;
         

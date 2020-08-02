@@ -50,58 +50,30 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 sub_legtrack_ = root_nh.subscribe("/leg_detection/people_msg_stamped", 1, &FTSAdaptiveForceController::legTrackCallback, this );
                 baseForce_allParamsStored_ = false;
                 baseForce_fts_offset_reset_ = false;
+
         /* Parametrization debug topics */
-                // base x
-                pub_base_x_currentDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/x/currentDistanceFromStart", 1);
-                pub_base_x_averageDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/x/averageDist", 1);
-                pub_base_x_currentRawForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/x/currentRawForce", 1);
-                pub_base_x_virtSpring_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/x/virtualSpringForce", 1);
-                pub_base_x_resForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/x/resultingForce", 1);
-                // base y left
-                pub_base_y_left_currentDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/left/currentDistanceFromStart", 1);
-                pub_base_y_left_averageDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/left/averageDist", 1);
-                pub_base_y_left_currentRawForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/left/currentRawForce", 1);
-                pub_base_y_left_virtSpring_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/left/virtualSpringForce", 1);
-                pub_base_y_left_resForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/left/resultingForce", 1);
-                // base y right
-                pub_base_y_right_currentDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/right/currentDistanceFromStart", 1);
-                pub_base_y_right_averageDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/right/averageDist", 1);
-                pub_base_y_right_currentRawForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/right/currentRawForce", 1);
-                pub_base_y_right_virtSpring_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/right/virtualSpringForce", 1);
-                pub_base_y_right_resForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/y/right/resultingForce", 1);
-                // base rot left
-                pub_base_rot_left_currentDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/left/currentDistanceFromStart", 1);
-                pub_base_rot_left_averageDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/left/averageDist", 1);
-                pub_base_rot_left_currentRawForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/left/currentRawForce", 1);
-                pub_base_rot_left_virtSpring_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/left/virtualSpringForce", 1);
-                pub_base_rot_left_resForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/left/resultingForce", 1);
-                // base rot right
-                pub_base_rot_right_currentDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/right/currentDistanceFromStart", 1);
-                pub_base_rot_right_averageDist_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/right/averageDist", 1);
-                pub_base_rot_right_currentRawForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/right/currentRawForce", 1);
-                pub_base_rot_right_virtSpring_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/right/virtualSpringForce", 1);
-                pub_base_rot_right_resForce_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/base/rot/right/resultingForce", 1);
+                pub_base_currentDist_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/currentDistanceFromStart", 1);
+                pub_base_averageDist_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/averageDist", 1);
+                pub_base_currentRawForce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/currentRawForce", 1);
+                pub_base_virtSpring_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/virtualSpringForce", 1);
+                pub_base_resForce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/resultingForce", 1);
+
                 // leg tracking
                 travelledDistance_ = 0.0;
                 // adaption factors
-                pub_adaptive_scale_x_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/adaptX/currentScale", 1);
-                pub_adaptive_factor_min_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/adaptX/minVelFactor", 1);
-                pub_adaptive_factor_max_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/adaptX/maxVelFactor", 1);
-                pub_adaptive_distDiff_ = root_nh.advertise<std_msgs::Float64>("robotrainer_controllers/parametrization/adaptX/distanceDiffToLast", 1);
+                pub_adaptive_scale_x_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/currentScale", 1);
+                pub_adaptive_factor_min_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/minVelFactor", 1);
+                pub_adaptive_factor_max_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/maxVelFactor", 1);
+                pub_adaptive_distDiff_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/distanceDiffToLast", 1);
                 //force-torque
-                pub_force_raw_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/ft/raw", 1);
-                pub_force_raw_lim_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/ft/raw_limited", 1);
-                pub_force_adapt_lim_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/ft/adapted_limited", 1);
-                pub_force_adapt_unscaled_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/ft/adapted_unscaled", 1);
-                pub_force_adapt_base_scaled_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/ft/adapted_base_scaled", 1);
+                pub_force_adapt_limited_input_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adapted_limited_input_force", 1);
                 
-                pub_adaptive_scale_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/adaption/scale", 1);
-                pub_adaptive_max_ft_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/adaption/maxFT", 1);
+                pub_adaptive_scale_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/scale", 1);
+                pub_adaptive_max_ft_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/maxFT", 1);
         
         /* Blinky LED initialization */
-                led_ac_ = new actionlib::SimpleActionClient<iirob_led::BlinkyAction>("/rosy_test/leds_rectangle/blinky", true);
+                led_ac_ = new actionlib::SimpleActionClient<iirob_led::BlinkyAction>("/leds_rectangle/blinky", true);
                 if (led_ac_->waitForServer(ros::Duration(2))) {
-                    pub_input_force_for_led_ = root_nh.advertise<geometry_msgs::WrenchStamped>("/rosy_test/leds_rectangle/led_force", 1);
                     ROS_INFO("[ADAPT - INIT] LED actionclient registered");
                 }
                 else {
@@ -117,7 +89,7 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 blinkyStartGreen_.duration_on = 0.5;
                 blinkyStartGreen_.duration_off = 0.0;
                 blinkyStartGreen_.start_led = 1;
-                blinkyStartGreen_.end_led = 384;
+                blinkyStartGreen_.end_led = 231;  // SR2: 384;
                 blinkyStartGreen_.num_leds = 0;
                 blinkyStartGreen_.fade_in = false;
                 blinkyStartGreen_.fade_out = false;
@@ -126,39 +98,39 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 blinkyStart_x_.blinks = 100;
                 blinkyStart_x_.duration_on = 0.25;
                 blinkyStart_x_.duration_off = 0.05;
-                blinkyStart_x_.start_led = 300;
-                blinkyStart_x_.end_led = 384;
+                blinkyStart_x_.start_led = 231-72; // SR2: 300;
+                blinkyStart_x_.end_led = 231; // SR2: 384;
                 
                 blinkyStart_x_back_= blinkyStart_x_;
-                blinkyStart_x_back_.start_led = 108;
-                blinkyStart_x_back_.end_led = 192;
+                blinkyStart_x_back_.start_led = 45; // SR2: 108;
+                blinkyStart_x_back_.end_led = 44+72; // SR2: 192;
                 
                 blinkyStart_y_left_ = blinkyStart_x_;
                 blinkyStart_y_left_.start_led = 0;
-                blinkyStart_y_left_.end_led = 108;
+                blinkyStart_y_left_.end_led = 44; // SR2: 108;
                 
                 blinkyStart_y_right_ = blinkyStart_x_;
-                blinkyStart_y_right_.start_led = 192;
-                blinkyStart_y_right_.end_led = 300;
+                blinkyStart_y_right_.start_led = 44+72+1; // SR2: 192;
+                blinkyStart_y_right_.end_led = 44+72+43; // SR2: 300;
                 
                 blinkyStart_rot_left_ = blinkyStart_x_;
-                blinkyStart_rot_left_.start_led = 361;
+                blinkyStart_rot_left_.start_led = 210; // SR2: 361;
                 blinkyStart_rot_left_.end_led = 27;
                 
                 blinkyStart_rot_right_ = blinkyStart_x_;
-                blinkyStart_rot_right_.start_led = 279;
-                blinkyStart_rot_right_.end_led = 327;
+                blinkyStart_rot_right_.start_led = 44+72+43-16; // SR2: 279;
+                blinkyStart_rot_right_.end_led = 44+72+43+15; // SR2: 327;
                 
                 blinkyWalkForward_ = blinkyStartGreen_;
                 blinkyWalkForward_.blinks = 50;
                 blinkyWalkForward_.duration_on = 0.6;
                 blinkyWalkForward_.duration_off = 0.15;
-                blinkyWalkForward_.start_led = 300;
-                blinkyWalkForward_.end_led = 384;
+                blinkyWalkForward_.start_led = blinkyStart_x_.start_led;
+                blinkyWalkForward_.end_led = blinkyStart_x_.end_led;
                 
                 blinkyWalkBackwards_ = blinkyWalkForward_;
-                blinkyWalkBackwards_.start_led = 108;
-                blinkyWalkBackwards_.end_led = 192;
+                blinkyWalkBackwards_.start_led = blinkyStart_x_back_.start_led;
+                blinkyWalkBackwards_.end_led = blinkyStart_x_back_.end_led;
                 
                 blinkyPhaseYellow_.color.r = 0.5;
                 blinkyPhaseYellow_.color.g = 0.5;
@@ -168,20 +140,20 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 blinkyPhaseYellow_.duration_on = 0.20;
                 blinkyPhaseYellow_.duration_off = 0.05;
                 blinkyPhaseYellow_.start_led = 1;
-                blinkyPhaseYellow_.end_led = 384;
+                blinkyPhaseYellow_.end_led = 231;
                 blinkyPhaseYellow_.num_leds = 0;
                 blinkyPhaseYellow_.fade_in = false;
                 blinkyPhaseYellow_.fade_out = false;
                 
-                blinkyFinishedRed_.color.r =0.6;
+                blinkyFinishedRed_.color.r =0.55;
                 blinkyFinishedRed_.color.g = 0.0;
-                blinkyFinishedRed_.color.b = 0.0;
+                blinkyFinishedRed_.color.b = 0.55;
                 blinkyFinishedRed_.color.a = 1.0;
                 blinkyFinishedRed_.blinks = 1;
                 blinkyFinishedRed_.duration_on = 0.5;
                 blinkyFinishedRed_.duration_off = 0.0;
                 blinkyFinishedRed_.start_led = 1;
-                blinkyFinishedRed_.end_led = 384;
+                blinkyFinishedRed_.end_led = 231;
                 blinkyFinishedRed_.num_leds = 0;
                 blinkyFinishedRed_.fade_in = false;
                 blinkyFinishedRed_.fade_out = false;
@@ -192,7 +164,8 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 blinkyAlmostFinishedRed_.duration_off = 0.05;
                 
                 blinkyStepAway_ = blinkyFinishedRed_;
-                blinkyStepAway_.color.r = 0.9;
+                blinkyStepAway_.color.r = 0.8;
+                blinkyStepAway_.color.b = 0.3;
                 blinkyStepAway_.blinks = 100;
                 blinkyStepAway_.duration_on = 0.1;
                 blinkyStepAway_.duration_off = 0.05;
@@ -202,24 +175,24 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 blinkyRobotAutomaticMovement_.blinks = 200;
                 
                 blinkyRobotAutomaticMovement_x_ = blinkyRobotAutomaticMovement_;
-                blinkyRobotAutomaticMovement_x_.start_led = 108;
-                blinkyRobotAutomaticMovement_x_.end_led = 192;
+                blinkyRobotAutomaticMovement_x_.start_led = blinkyStart_x_back_.start_led;
+                blinkyRobotAutomaticMovement_x_.end_led = blinkyStart_x_back_.end_led;
                 
                 blinkyRobotAutomaticMovement_y_left_ = blinkyRobotAutomaticMovement_;
-                blinkyRobotAutomaticMovement_y_left_.start_led = 192;
-                blinkyRobotAutomaticMovement_y_left_.end_led = 300;
+                blinkyRobotAutomaticMovement_y_left_.start_led = blinkyStart_y_right_.start_led;
+                blinkyRobotAutomaticMovement_y_left_.end_led = blinkyStart_y_right_.end_led;
                 
                 blinkyRobotAutomaticMovement_y_right_ = blinkyRobotAutomaticMovement_;
-                blinkyRobotAutomaticMovement_y_right_.start_led = 0;
-                blinkyRobotAutomaticMovement_y_right_.end_led = 108;
+                blinkyRobotAutomaticMovement_y_right_.start_led = blinkyStart_y_left_.start_led;
+                blinkyRobotAutomaticMovement_y_right_.end_led = blinkyStart_y_left_.end_led;
                 
                 blinkyRobotAutomaticMovement_rot_left_ = blinkyRobotAutomaticMovement_;
-                blinkyRobotAutomaticMovement_rot_left_.start_led = 279;
-                blinkyRobotAutomaticMovement_rot_left_.end_led = 327;
+                blinkyRobotAutomaticMovement_rot_left_.start_led = blinkyStart_rot_right_.start_led;
+                blinkyRobotAutomaticMovement_rot_left_.end_led = blinkyStart_rot_right_.end_led;
                 
                 blinkyRobotAutomaticMovement_rot_right_ = blinkyRobotAutomaticMovement_;
-                blinkyRobotAutomaticMovement_rot_right_.start_led = 361;
-                blinkyRobotAutomaticMovement_rot_right_.end_led = 27;
+                blinkyRobotAutomaticMovement_rot_right_.start_led = blinkyStart_rot_left_.start_led;
+                blinkyRobotAutomaticMovement_rot_right_.end_led = blinkyStart_rot_left_.end_led;
                 
                 blinkyFreeMovementBlue_.color.r =0.11;
                 blinkyFreeMovementBlue_.color.g = 0.56;
@@ -229,7 +202,7 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
                 blinkyFreeMovementBlue_.duration_on = 0.7;
                 blinkyFreeMovementBlue_.duration_off = 0.0;
                 blinkyFreeMovementBlue_.start_led = 1;
-                blinkyFreeMovementBlue_.end_led = 384;
+                blinkyFreeMovementBlue_.end_led = 231;
                 blinkyFreeMovementBlue_.num_leds = 0;
                 blinkyFreeMovementBlue_.fade_in = false;
                 blinkyFreeMovementBlue_.fade_out = false;
@@ -262,24 +235,20 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 base_reconfigured_flag_ = false;
         }
         current_loop_time_ = time;
-        
         //get inputs for the next update loop
-        ROS_WARN_COND(!running_, "Base Controller is not running at the moment!");
+//         ROS_WARN_COND(!running_, "Base Controller is not running at the moment!");
         std::array<double, 3> vel_percent = getOldVelocityPercent();
         std::array<double, 3> fts_input_raw = FTSBaseController::getFTSInput(current_loop_time_);
-        pub_force_raw_.publish(convertToMessage(fts_input_raw));
-//         pub_force_raw_lim_.publish(convertToMessage(FTSBaseController::getScaledLimitedFTSInput(fts_input_raw)));
-        
         
         if (parametrization_active_) {
-                ROS_WARN_THROTTLE(10.0, "[PARAMETRIZATION STARTED]");
+                ROS_WARN_ONCE("[PARAMETRIZATION STARTED]");
                 
                 if (switchStepRequested_) {
                         if (!userIsGripping()) {
                                 switchParametrizationStep();
                         } else {
                                 setLEDPhase(stepAwayFromRobot);
-                                fts_input_raw = zeroForce_;
+                                fts_input_raw = zeroForce_; // TODO: This should be already done in "getFTSInput"
                         }
                 } else if (!stepInitialized_) {
                         initParametrizationStep();
@@ -358,22 +327,17 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                         fts_input_raw = zeroForce_; //prevent robot from moving when nobody is gripping it
                 }
         } else { // robot in normal use
-                setActiveDimensions( all_active_);
-                                
-                if (adaption_is_active_) { adaptForceScale(); }
+            setActiveDimensions( all_active_);
+
+            if (adaption_is_active_) { adaptForceScale(); }
         }
         
         sendLEDOutput(); // LED output to robot (if LEDPhase has changed or is set to showForce)
-        pub_force_adapt_unscaled_.publish(convertToMessage(fts_input_raw));
         std::array<double,3> scaledLimitedFTSInput = FTSBaseController::getScaledLimitedFTSInput(fts_input_raw);
-        pub_force_adapt_lim_.publish(convertToMessage(scaledLimitedFTSInput));
-        
-//         std::array<double,3> baseScaledInput;
-//         for (int i = 0; i < 3; i ++) {
-//                 baseScaledInput[i] = scaledLimitedFTSInput[i] * base_max_ft_[i];
-//         }
-//         pub_force_adapt_base_scaled_.publish(convertToMessage(baseScaledInput));
-        
+        if (pub_force_adapt_limited_input_->trylock()) {
+            pub_force_adapt_limited_input_->msg_ = convertToMessage(scaledLimitedFTSInput);
+            pub_force_adapt_limited_input_->unlockAndPublish();
+        }
         
         if (use_passive_behavior_ctrlr_) {
                 double timeSinceRelease = FTSBaseController::getTimeSinceReleasingRobot(current_loop_time_);
@@ -387,6 +351,13 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
         }
        
 }
+
+void FTSAdaptiveForceController::forceInputToLed( const geometry_msgs::WrenchStamped force_input ) {
+    if (not parametrization_active_) {
+        FTSBaseController::forceInputToLed(force_input);
+    }
+}
+
 
 /**
  * \brief This function initializes the parameters for the respective parametrization step, which is only executed after initialization is marked true
@@ -534,10 +505,10 @@ std::array<double, 3> FTSAdaptiveForceController::baseForceTest( std::array<doub
                         
                 } else if (travelledDistance_ > 0.0) {//push robot back to starting point
                         if (secondsSinceLastGrip > 1.0 ) {
-                                setLEDPhase(robotInAutomaticMovement);
-                                ROS_WARN_THROTTLE(2, "[BASE COMPLETED] - Pushing robot back (CURR_DIST: %.3f)", travelledDistance_);
-                                ROS_DEBUG_THROTTLE(5, "[BASE] - COMPLETED, RETURNING - Phase completed, pushing robot back to start.");
-                                return returnRobotToStartpoint();
+                            setLEDPhase(robotInAutomaticMovement);
+                            ROS_DEBUG_ONCE("[BASE] - PHASE COMPLETED, RETURNING - Phase completed, pushing robot back to start.");
+                            ROS_WARN_THROTTLE(0.5, "[BASE COMPLETED] - Pushing robot back (CURR_DIST: %.3f)", travelledDistance_);
+                            return returnRobotToStartpoint();
                         } else {
                                 return zeroForce_;
                         }
@@ -850,20 +821,26 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
  */
 void FTSAdaptiveForceController::adaptForceScale() {
         
-        if (adaption_is_active_) {
-                std::array<double, 3> curr_scale = scaleBetweenValues(force_scale_minvel_, force_scale_maxvel_);
-                
-                std::array<double, 3> adaptive_max_ft;
-                for (int i = 0; i < 3; i++) {
-                        adaptive_max_ft[i] = curr_scale[i] * base_max_ft_[i];
-                }
-                setMaxFt(adaptive_max_ft);
-                pub_adaptive_scale_.publish(convertToMessage(curr_scale));
-                pub_adaptive_max_ft_.publish(convertToMessage(adaptive_max_ft));
-        } else {
-                ROS_WARN("[ADAPT_Force:OFF]");
-                resetToBaseValues();
+    if (adaption_is_active_) {
+        std::array<double, 3> curr_scale = scaleBetweenValues(force_scale_minvel_, force_scale_maxvel_);
+
+        std::array<double, 3> adaptive_max_ft;
+        for (int i = 0; i < 3; i++) {
+                adaptive_max_ft[i] = curr_scale[i] * base_max_ft_[i];
         }
+        setMaxFt(adaptive_max_ft);
+        if (pub_adaptive_scale_->trylock()) {
+            pub_adaptive_scale_->msg_ = convertToMessage(curr_scale);
+            pub_adaptive_scale_->unlockAndPublish();
+        }
+        if (pub_adaptive_max_ft_->trylock()) {
+            pub_adaptive_max_ft_->msg_ = convertToMessage(adaptive_max_ft);
+            pub_adaptive_max_ft_->unlockAndPublish();
+        }
+    } else {
+        ROS_WARN("[ADAPT_Force:OFF]");
+        resetToBaseValues();
+    }
 }
 
 
@@ -874,7 +851,7 @@ void FTSAdaptiveForceController::adaptForceScale() {
  */
 void FTSAdaptiveForceController::setBaseValues() {
         
-        base_max_ft_ = getMaxFt();
+    base_max_ft_ = getMaxFt();
 }
 
 /**
@@ -951,7 +928,7 @@ void FTSAdaptiveForceController::resetTravelledDistance() {
 
 std::array<double, 3> FTSAdaptiveForceController::returnRobotToStartpoint() {
         
-        double scale = (travelledDistance_ > 0.1) ? 1.0 : 0.5;
+        double scale = (travelledDistance_ > 0.1) ? 0.8 : 0.0;
         switch (currentStep_) {
                 case baseX: case recordFeetDistance:
                         return {-1.0 *  returnForce_x_ * scale, 0.0, 0.0};
@@ -1056,25 +1033,25 @@ void FTSAdaptiveForceController::sendLEDForceTopics() {
         real_wrench_msg.wrench.force.y = 0.0;
         real_wrench_msg.wrench.torque.z = 0.0;
         switch (currentStep_) { // disable currently unavailable directions from showing
-                case baseX:
-                        real_wrench_msg.wrench.force.x = ledForceInput_;
-                        break;
-                case baseYLeft:
-                        real_wrench_msg.wrench.force.y = ledForceInput_;
-                        break;
-                case baseYRight:
-                        real_wrench_msg.wrench.force.y = -1.0 * ledForceInput_;
-                        break;
-                case baseRotLeft: // let the back left LED flash
-                        real_wrench_msg.wrench.force.x = ledForceInput_;
-                        real_wrench_msg.wrench.force.y = ledForceInput_;
-                        break;
-                case baseRotRight: // let the back right
-                        real_wrench_msg.wrench.force.x = ledForceInput_;
-                        real_wrench_msg.wrench.force.y = -1.0 * ledForceInput_;
-                        break;
+            case baseX:
+                    real_wrench_msg.wrench.force.x = ledForceInput_;
+                    break;
+            case baseYLeft:
+                    real_wrench_msg.wrench.force.y = ledForceInput_;
+                    break;
+            case baseYRight:
+                    real_wrench_msg.wrench.force.y = -1.0 * ledForceInput_;
+                    break;
+            case baseRotLeft: // let the back left LED flash
+                    real_wrench_msg.wrench.force.x = ledForceInput_;
+                    real_wrench_msg.wrench.force.y = ledForceInput_;
+                    break;
+            case baseRotRight: // let the back right
+                    real_wrench_msg.wrench.force.x = ledForceInput_;
+                    real_wrench_msg.wrench.force.y = -1.0 * ledForceInput_;
+                    break;
         }
-        pub_input_force_for_led_.publish(real_wrench_msg);
+        forceInputToLed(real_wrench_msg);
 }
 
 /**
@@ -1083,10 +1060,10 @@ void FTSAdaptiveForceController::sendLEDForceTopics() {
 void FTSAdaptiveForceController::setLEDPhase(led_phase_ requestPhase) {
         
         if (currentLEDPhase_ != requestPhase) { // to prevent from same message being shown multiple times
-                led_ac_->cancelGoalsAtAndBeforeTime(current_loop_time_);
-                currentLEDPhase_ = requestPhase;
-                sendLEDGoal_ = true;
-                ROS_DEBUG("LED PHASE HAS CHANGED!");
+            led_ac_->cancelGoalsAtAndBeforeTime(current_loop_time_);
+            currentLEDPhase_ = requestPhase;
+            sendLEDGoal_ = true;
+            ROS_DEBUG("LED PHASE HAS CHANGED!");
         }
 }
 
@@ -1096,8 +1073,7 @@ void FTSAdaptiveForceController::setLEDPhase(led_phase_ requestPhase) {
 void FTSAdaptiveForceController::sendLEDOutput() {
         
        if (currentLEDPhase_ == showForce) {
-               
-               sendLEDForceTopics();
+          sendLEDForceTopics();
        } else if (sendLEDGoal_) {
                 sendLEDGoal_ = false; //to only send it once the phase has changed
                 switch (currentLEDPhase_) {
@@ -1182,49 +1158,64 @@ void FTSAdaptiveForceController::sendLEDOutput() {
  */
 void FTSAdaptiveForceController::sendDebugTopicsParamBase( double travelledDist, double averageDist, double raw_input, double currentVirtSpringForce, double effectiveForce ) {
         
-        std_msgs::Float64 rawInput_msg, virtSpring_msg, resForce_msg,distCurr_msg, distAvg_msg; //debug topic messages
-        rawInput_msg.data = raw_input;
-        virtSpring_msg.data = currentVirtSpringForce;
-        resForce_msg.data = effectiveForce;
-        distCurr_msg.data = travelledDist;
-        distAvg_msg.data = averageDist;         
+        //debug topic messages
+        geometry_msgs::Twist averageDist_msg, virtSpring_msg, currentRawForce_msg, resForce_msg, currentDist_msg;
         
         switch(currentStep_) {
-                case baseX:
-                        pub_base_x_currentRawForce_.publish(rawInput_msg);
-                        pub_base_x_virtSpring_.publish(virtSpring_msg);
-                        pub_base_x_resForce_.publish(resForce_msg);
-                        pub_base_x_currentDist_.publish(distCurr_msg);
-                        pub_base_x_averageDist_.publish(distAvg_msg);
-                        break;
-                case baseYLeft:
-                        pub_base_y_left_currentRawForce_.publish(rawInput_msg);
-                        pub_base_y_left_virtSpring_.publish(virtSpring_msg);
-                        pub_base_y_left_resForce_.publish(resForce_msg);
-                        pub_base_y_left_currentDist_.publish(distCurr_msg);
-                        pub_base_y_left_averageDist_.publish(distAvg_msg);
-                        break;
-                case baseYRight:
-                        pub_base_y_right_currentRawForce_.publish(rawInput_msg);
-                        pub_base_y_right_virtSpring_.publish(virtSpring_msg);
-                        pub_base_y_right_resForce_.publish(resForce_msg);
-                        pub_base_y_right_currentDist_.publish(distCurr_msg);
-                        pub_base_y_right_averageDist_.publish(distAvg_msg);
-                        break;
-                case baseRotLeft:
-                        pub_base_rot_left_currentRawForce_.publish(rawInput_msg);
-                        pub_base_rot_left_virtSpring_.publish(virtSpring_msg);
-                        pub_base_rot_left_resForce_.publish(resForce_msg);
-                        pub_base_rot_left_currentDist_.publish(distCurr_msg);
-                        pub_base_rot_left_averageDist_.publish(distAvg_msg);
-                        break;
-                case baseRotRight:
-                        pub_base_rot_right_currentRawForce_.publish(rawInput_msg);
-                        pub_base_rot_right_virtSpring_.publish(virtSpring_msg);
-                        pub_base_rot_right_resForce_.publish(resForce_msg);
-                        pub_base_rot_right_currentDist_.publish(distCurr_msg);
-                        pub_base_rot_right_averageDist_.publish(distAvg_msg);
-                        break;
+            case baseX:
+                averageDist_msg.linear.x = averageDist;
+                virtSpring_msg.linear.x = currentVirtSpringForce;
+                currentRawForce_msg.linear.x = raw_input;
+                resForce_msg.linear.x = effectiveForce;
+                currentDist_msg.linear.x = travelledDist;
+                break;
+            case baseYLeft:
+                averageDist_msg.linear.y = averageDist;
+                virtSpring_msg.linear.y = currentVirtSpringForce;
+                currentRawForce_msg.linear.y = raw_input;
+                resForce_msg.linear.y = effectiveForce;
+                currentDist_msg.linear.y = travelledDist;
+                break;
+            case baseYRight:
+                averageDist_msg.linear.z = averageDist;
+                virtSpring_msg.linear.z = currentVirtSpringForce;
+                currentRawForce_msg.linear.z = raw_input;
+                resForce_msg.linear.z = effectiveForce;
+                currentDist_msg.linear.z = travelledDist;
+                break;
+            case baseRotLeft:
+                averageDist_msg.angular.x = averageDist;
+                virtSpring_msg.angular.x = currentVirtSpringForce;
+                currentRawForce_msg.angular.x = raw_input;
+                resForce_msg.angular.x = effectiveForce;
+                currentDist_msg.angular.x = travelledDist;
+                break;
+            case baseRotRight:
+                averageDist_msg.angular.y = averageDist;
+                virtSpring_msg.angular.y = currentVirtSpringForce;
+                currentRawForce_msg.angular.y = raw_input;
+                resForce_msg.angular.y = effectiveForce;
+                currentDist_msg.angular.y = travelledDist;
+        }
+        if (pub_base_averageDist_->trylock()) {
+            pub_base_averageDist_->msg_ = averageDist_msg;
+            pub_base_averageDist_->unlockAndPublish();
+        }
+        if (pub_base_virtSpring_->trylock()) {
+            pub_base_virtSpring_->msg_ = virtSpring_msg;
+            pub_base_virtSpring_->unlockAndPublish();
+        }
+        if (pub_base_currentRawForce_->trylock()) {
+            pub_base_currentRawForce_->msg_ = currentRawForce_msg;
+            pub_base_currentRawForce_->unlockAndPublish();
+        }
+        if (pub_base_resForce_->trylock()) {
+            pub_base_resForce_->msg_ = resForce_msg;
+            pub_base_resForce_->unlockAndPublish();
+        }
+        if (pub_base_currentDist_->trylock()) {
+            pub_base_currentDist_->msg_ = currentDist_msg;
+            pub_base_currentDist_->unlockAndPublish();
         }
 }
 
@@ -1233,15 +1224,22 @@ void FTSAdaptiveForceController::sendDebugTopicsParamBase( double travelledDist,
  */
 void FTSAdaptiveForceController::sendDebugTopicsParamAdaptX( double currentScale, double robotDistDiff ) {
         
-        std_msgs::Float64 currentScale_msg, minvelScale_msg, maxvelScale_msg, distDiff_msg;
-        currentScale_msg.data = currentScale;
-        minvelScale_msg.data = force_scale_minvel_[0];
-        maxvelScale_msg.data = force_scale_maxvel_[0];
-        distDiff_msg.data = robotDistDiff;
-        pub_adaptive_scale_x_.publish(currentScale_msg);
-        pub_adaptive_factor_min_.publish(minvelScale_msg);
-        pub_adaptive_factor_max_.publish(maxvelScale_msg);
-        pub_adaptive_distDiff_.publish(distDiff_msg);
+        if (pub_adaptive_scale_x_->trylock()){
+            pub_adaptive_scale_x_->msg_.data = currentScale;
+            pub_adaptive_scale_x_->unlockAndPublish();
+        }
+        if (pub_adaptive_factor_min_->trylock()){
+            pub_adaptive_factor_min_->msg_.data = force_scale_minvel_[0];
+            pub_adaptive_factor_min_->unlockAndPublish();
+        }
+        if (pub_adaptive_factor_max_->trylock()){
+            pub_adaptive_factor_max_->msg_.data = force_scale_maxvel_[0];
+            pub_adaptive_factor_max_->unlockAndPublish();
+        }
+        if (pub_adaptive_distDiff_->trylock()){
+            pub_adaptive_distDiff_->msg_.data = robotDistDiff;
+            pub_adaptive_distDiff_->unlockAndPublish();
+        }
 }
 
 

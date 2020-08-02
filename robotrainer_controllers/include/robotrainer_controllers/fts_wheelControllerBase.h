@@ -44,8 +44,9 @@ public:
         
         pub_divider_ =  controller_nh.param("pub_divider",10);
 
+        twist_subscriber_ = controller_nh.subscribe("/base/twist_controller/command", 1, &WheelControllerBase::topicCallbackTwistCmd, this);
+        
         wheel_commands_.resize(this->wheel_states_.size());
-
         commands_pub_.reset(new realtime_tools::RealtimePublisher<cob_base_controller_utils::WheelCommands>(controller_nh, "wheel_commands", 5));
        
         commands_pub_->msg_.drive_target_velocity.resize(this->wheel_states_.size());
@@ -59,6 +60,11 @@ public:
         this->geom_->reset();
         target_.updated = false;
         cycles_ = 0;
+        
+        boost::mutex::scoped_lock lock(twist_mutex_);
+        twist_command_.linear.x = 0;
+        twist_command_.linear.y = 0;
+        twist_command_.angular.x = 0;
     }
     void updateCtrl(const ros::Time& time, const ros::Duration& period){
         if(target_.updated){
@@ -107,8 +113,9 @@ protected:
 
     std::vector<WheelCommand> wheel_commands_;
 
-    boost::mutex mutex_;
+    boost::mutex mutex_, twist_mutex_;
     ros::Subscriber twist_subscriber_;
+    geometry_msgs::Twist twist_command_;
     
     boost::scoped_ptr<realtime_tools::RealtimePublisher<cob_base_controller_utils::WheelCommands> > commands_pub_;
     uint32_t cycles_;
@@ -116,6 +123,19 @@ protected:
     
     ros::Duration timeout_;
     double max_vel_trans_, max_vel_rot_;
+    
+    void topicCallbackTwistCmd(const geometry_msgs::Twist::ConstPtr& msg) {
+        if(isnan(msg->linear.x) || isnan(msg->linear.y) || isnan(msg->angular.z)) {
+            ROS_FATAL("Received NaN-value in Twist message. Reset target to zero.");
+            twist_command_.linear.x = 0;
+            twist_command_.linear.y = 0;
+            twist_command_.angular.z = 0;
+        } else {
+            twist_command_.linear.x = msg->linear.x;
+            twist_command_.linear.y = msg->linear.y;
+            twist_command_.angular.z = msg->linear.z;
+        }
+    }
 
 };
 }

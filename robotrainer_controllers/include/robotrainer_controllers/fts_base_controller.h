@@ -18,11 +18,12 @@
 #include <filters/filter_base.h>
 #include <filters/filter_chain.h>
 #include <std_srvs/Empty.h>
+#include <std_srvs/Trigger.h>
 #include <pluginlib/class_list_macros.h>
-#include <tf/transform_datatypes.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/WrenchStamped.h>
-#include <tf2_ros/transform_listener.h>
+//FIXME: remove this tf stuff?
+#include <tf/transform_datatypes.h>
 
 #include <control_toolbox/pid.h>
 #include <controller_interface/controller.h>
@@ -36,6 +37,8 @@
 #include <dynamic_reconfigure/BoolParameter.h>
 #include <dynamic_reconfigure/Reconfigure.h>
 #include <dynamic_reconfigure/Config.h>
+
+#include <realtime_tools/realtime_publisher.h>
 
 namespace robotrainer_controllers {
         
@@ -123,7 +126,11 @@ namespace robotrainer_controllers {
         protected:
                 hardware_interface::ForceTorqueSensorHandle hw_fts_;
 
+                wheel_params_t wheel_params_;
+                ros::NodeHandle ctrl_nh_, wheel_ctrl_nh_;
+
                 bool running_;
+                bool can_be_running_;
                 bool base_initialized_;
                 
                 bool enableCounterForce_;
@@ -140,15 +147,16 @@ namespace robotrainer_controllers {
                 //zero force vector to prevent the robot from moving in certain situations
                 std::array<double, 3> zeroForce_;
 
-
+                ros::ServiceServer use_twist_input_srv_;
+                ros::ServiceServer update_kinematics_service_srv_;
+                
                  /*____For Modalities____*/
                 
                 //modalitites parameters:
                 enum modality_type{none, base_modalities, controller_modalities};
                 modality_type modalities_used_;
                 
-                ros::ServiceServer service_server_; 
-                
+                ros::ServiceServer configure_modalities_srv_;
                 
                 // Modalities
                 bool modalities_loaded_;
@@ -169,8 +177,10 @@ namespace robotrainer_controllers {
                 
                 filters::FilterChain<geometry_msgs::Twist>* chain_ptr_ = new filters::FilterChain<geometry_msgs::Twist>("geometry_msgs::Twist"); //Node template type and argument must match
                 bool modalities_chain_configured_;
-                ros::Publisher pub_wrench_lim_; //debug
-                ros::Publisher pub_resulting_force_after_counterforce_;
+                //debug
+                realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_velocity_output_;
+                realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> *pub_force_input_raw_, *pub_input_force_for_led_;
+                realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_resulting_force_after_counterforce_;
                 
                 //counter force modality
                 std::array<double,3> staticCounterForce_ = {{0.0, 0.0, 0.0}};
@@ -194,6 +204,8 @@ namespace robotrainer_controllers {
                 bool configureModalities();
                 bool configureBaseModalities();
                 bool configureControllerModalities();
+                bool setUseTwistInputCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp);
+                bool updateWheelParamsCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp);
                 bool configureModalitiesCallback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
                 std::array<double, 3> applyCounterforce( std::array<double, 3> scaledInputForce, std::array<double, 3> scaledCounterforce );
                 std::array<double, 3> applyGlobalCounterforce( std::array<double, 3> scaledInputForce );
@@ -204,15 +216,14 @@ namespace robotrainer_controllers {
                 
                 void counterforce_area_callback( const std_msgs::Float64::ConstPtr& msg );
                 
-                
-                
                 //dynamic reconfigure
                 dynamic_reconfigure::Server<robotrainer_controllers ::FTSBaseControllerConfig>* base_dysrv_;
                 ros::ServiceClient dysrv_callback_service_;
                 bool base_reconfigured_flag_;
-
+                
                 // Basic parameters
                 bool no_hw_output_;
+                bool use_twist_input_;
                 double controllerUpdateRate_;
                 std::string controllerFrameId_;
 
@@ -233,21 +244,19 @@ namespace robotrainer_controllers {
                 std::array<double, 3> a1_; //in order [x], [y], [torque]
                 std::array<double, 3> b1_; //in order [x], [y], [torque]
 
-                ros::Publisher pub_cmd_;
+//                 boost::mutex mutex_;
 
-                boost::mutex mutex_;
-
-                //iput for used for controlling in update()
+                //input for used for controlling in update()
                 std::array<double,3> force_input_;
 
                 std::array<double, 3> force_old_;
                 std::array<double, 3> velocity_old_;
+                
+                // real state of the platform
+                PlatformState platform_state_;
 
 
                 double delta_vel_;
-
-                ros::Publisher pub_res_vel_;
-                ros::Publisher pub_force_lim_;
                 
                 //to detect no user gripping
                 int noGripTicks_;
@@ -261,6 +270,7 @@ namespace robotrainer_controllers {
                 //debug LED
                 bool debug_led_on_;
                 
+                void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
 
                 //controller functions
                 void resetController(void);

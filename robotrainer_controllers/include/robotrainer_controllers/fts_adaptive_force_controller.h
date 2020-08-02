@@ -125,67 +125,20 @@ namespace robotrainer_controllers {
                 //passive_behavior_control
                 bool use_passive_behavior_ctrlr_;
                 PassiveBehaviorControllerBase *passive_behavior_ctrl_;
-                
-                // base x
-                ros::Publisher pub_base_x_virtSpring_;
-                ros::Publisher pub_base_x_currentDist_;
-                ros::Publisher pub_base_x_averageDist_;
-                ros::Publisher pub_base_x_currentRawForce_;
-                ros::Publisher pub_base_x_resForce_;
-                //base y left
-                ros::Publisher pub_base_y_left_virtSpring_;
-                ros::Publisher pub_base_y_left_currentDist_;
-                ros::Publisher pub_base_y_left_averageDist_;
-                ros::Publisher pub_base_y_left_currentRawForce_;
-                ros::Publisher pub_base_y_left_resForce_;
-                //base y right
-                ros::Publisher pub_base_y_right_virtSpring_;
-                ros::Publisher pub_base_y_right_currentDist_;
-                ros::Publisher pub_base_y_right_averageDist_;
-                ros::Publisher pub_base_y_right_currentRawForce_;
-                ros::Publisher pub_base_y_right_resForce_;
-                //base rot left
-                ros::Publisher pub_base_rot_left_virtSpring_;
-                ros::Publisher pub_base_rot_left_currentDist_;
-                ros::Publisher pub_base_rot_left_averageDist_;
-                ros::Publisher pub_base_rot_left_currentRawForce_;
-                ros::Publisher pub_base_rot_left_resForce_;
-                //base rot right
-                ros::Publisher pub_base_rot_right_virtSpring_;
-                ros::Publisher pub_base_rot_right_currentDist_;
-                ros::Publisher pub_base_rot_right_averageDist_;
-                ros::Publisher pub_base_rot_right_currentRawForce_;
-                ros::Publisher pub_base_rot_right_resForce_;
-                
+
+                // publishers for parametrization
+                realtime_tools::RealtimePublisher<geometry_msgs::Twist> *pub_base_virtSpring_, *pub_base_currentDist_, *pub_base_averageDist_, *pub_base_currentRawForce_, *pub_base_resForce_;
+
                 // leg tracking                
-                ros::Publisher pub_legtrack_x_1_;
-                ros::Publisher pub_legtrack_x_2_;
-                ros::Publisher pub_legtrack_x_avg_;
-                ros::Publisher pub_legtrack_y_1_;
-                ros::Publisher pub_legtrack_y_2_;
-                ros::Publisher pub_legtrack_y_avg_;
-                ros::Publisher pub_legtrack_travelled_;
-                ros::Publisher pub_legtrack_distDiff_;
-                ros::Publisher pub_legtrack_timestamp_;
                 ros::Subscriber sub_legtrack_;
                 bool debug_enableLegTracking_;
                 ros::Time debug_legTrackingStarted_;
                 
                 // adaptive X
-                ros::Publisher pub_adaptive_scale_x_;
-                ros::Publisher pub_adaptive_factor_min_;
-                ros::Publisher pub_adaptive_factor_max_;
-                ros::Publisher pub_adaptive_distDiff_;
+                realtime_tools::RealtimePublisher<std_msgs::Float64> *pub_adaptive_scale_x_, *pub_adaptive_factor_min_, *pub_adaptive_factor_max_, *pub_adaptive_distDiff_;
                 
                 //general debug
-                ros::Publisher pub_force_raw_;
-                ros::Publisher pub_force_raw_lim_;
-                ros::Publisher pub_force_adapt_lim_;
-                ros::Publisher pub_force_adapt_unscaled_;
-                ros::Publisher pub_force_adapt_base_scaled_;
-                
-                ros::Publisher pub_adaptive_scale_;
-                ros::Publisher pub_adaptive_max_ft_;
+                realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_force_adapt_limited_input_, *pub_adaptive_scale_, *pub_adaptive_max_ft_;
                 
                 bool adaption_is_active_;
                 std::array<double, 3> base_max_ft_;
@@ -196,7 +149,6 @@ namespace robotrainer_controllers {
                 
                 // LED
                 actionlib::SimpleActionClient<iirob_led::BlinkyAction> *led_ac_;
-                ros::Publisher pub_input_force_for_led_;
                 enum led_phase_{ unlocked, waitForInput, walkForward, walkBackwards, almostReturned, phaseFinished, stepAwayFromRobot, robotInAutomaticMovement, showForce,  showAdapted };
                 led_phase_ currentLEDPhase_;
 
@@ -234,6 +186,8 @@ namespace robotrainer_controllers {
                 void switchParametrizationStep();
                 void updateTravelledDistance();
                 void resetTravelledDistance();
+
+                void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
                 
                 std::array<double, 3> baseForceTest(std::array<double, 3> fts_input_raw); // virtual spring test for various directions
                 void resetBaseForceTest();

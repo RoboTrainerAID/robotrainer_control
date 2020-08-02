@@ -3,14 +3,16 @@
 
 namespace robotrainer_controllers {
 FTSBaseController::FTSBaseController(){}
-bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh) {   
+bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle &controller_nh) {
         ROS_INFO("Init FTSBaseController!");
-        wheel_params_t wheel_params;
-        
-        
+        ctrl_nh_ = controller_nh;
+        ros::NodeHandle wheels_nh(root_nh, "wheel_controller");
+        wheel_ctrl_nh_ = wheels_nh;
+
         /* get Parameters from rosparam server (stored on yaml file) */
-        ros::NodeHandle fts_base_ctrl_nh(controller_nh, "FTSBaseController");
+        ros::NodeHandle fts_base_ctrl_nh(ctrl_nh_, "FTSBaseController");
         fts_base_ctrl_nh.param<bool>("no_hw_output", no_hw_output_, true);
+        fts_base_ctrl_nh.param<bool>("use_twist_input", use_twist_input_, false);
         fts_base_ctrl_nh.param<double>("update_rate", controllerUpdateRate_, 1.0);
         fts_base_ctrl_nh.param<std::string>("frame_id", controllerFrameId_, "base_link");
         fts_base_ctrl_nh.param<bool>("y_reversed", yReversed_, false);
@@ -51,15 +53,15 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         base_reconfigured_flag_ = false;
         
         /* Debug messages */
-        pub_cmd_ = root_nh.advertise<geometry_msgs::Twist>("robotrainer_controllers/fts_command_after_modalities", 1);
-        pub_res_vel_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/base/velocity_output", 1);
-        pub_force_lim_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/base/force_input_limited", 1);
-        pub_wrench_lim_ = root_nh.advertise<geometry_msgs::WrenchStamped>("robotrainer_controllers/base/input_wrench_limited", 1);
-        pub_resulting_force_after_counterforce_ = root_nh.advertise<geometry_msgs::Vector3>("robotrainer_controllers/base/after_counterforce_modality", 1);
-        
+        // TODO: Is it more convenient to be twist
+        pub_velocity_output_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(ctrl_nh_, "velocity_output", 1);
+        pub_force_input_raw_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(ctrl_nh_, "input_wrench_limited", 1);
+        pub_input_force_for_led_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(root_nh, "/leds_rectangle/led_force", 1);
+        pub_resulting_force_after_counterforce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(ctrl_nh_, "after_counterforce_modality", 1);
+
         /* Subscriber */
         //subscriber to the spatial control action for counterforce, which pushes a message with the current distance whenever the robot enters the counterforce area
-        counterforce_area_sub_ = root_nh.subscribe("virtual_areas/counterforce/center_dist_percent", 10, &FTSBaseController::counterforce_area_callback, this); 
+        counterforce_area_sub_ = root_nh.subscribe("virtual_areas/counterforce/center_dist_percent", 10, &FTSBaseController::counterforce_area_callback, this);
         /* Services */
         fts_client_ = root_nh.serviceClient<force_torque_sensor::CalculateSensorOffset>("CalculateOffsets");
         
@@ -83,7 +85,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         }
         hw_fts_ = robot_hw->get<hardware_interface::ForceTorqueSensorInterface>()->getHandle("ATI_45_Mini");
         hardware_interface::VelocityJointInterface* hw_vel = robot_hw->get<hardware_interface::VelocityJointInterface>();
-        if(!cob_omni_drive_controller::parseWheelParams(wheel_params, controller_nh) || !GeomController<UndercarriageCtrl>::init(hw_vel, wheel_params)) return false;
+        if(!cob_omni_drive_controller::parseWheelParams(wheel_params_, wheel_ctrl_nh_) || !GeomController<UndercarriageCtrl>::init(hw_vel, wheel_params_)) return false;
 
         if (controllerFrameId_.compare(hw_fts_.getFrameId()) != 0) {
             ROS_WARN("'frame_id' of input data is not equal to controllers frame!! Your controller will probably not work as expected! \nFTSBaseController is expecting data in '%s' frame, but input data frame is '%s'! You should probably correct this in configuration of your ForceTorqueSensorHandle.", controllerFrameId_.c_str(), hw_fts_.getFrameId().c_str());
@@ -98,18 +100,24 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         dysrv_callback_service_ = fts_base_ctrl_nh.serviceClient<dynamic_reconfigure::Reconfigure>("/base/fts_adaptive_force_controller/FTSBaseController/set_parameters");
         
         /* Initialize Position control */
-        pos_ctrl_.init(wheel_params, controller_nh);  
+        pos_ctrl_.init(wheel_params_, wheel_ctrl_nh_);
         
         ROS_WARN_COND(no_hw_output_, "SIMULATION MODE, NO OUTPUT TO REAL ROBOT!");
+
+        // Controller Mode Service
+        use_twist_input_srv_ = root_nh.advertiseService("set_use_twist_input", &FTSBaseController::setUseTwistInputCallback, this);
         
+        // Kinematics services
+        update_kinematics_service_srv_ = root_nh.advertiseService("update_kinematics", &FTSBaseController::updateWheelParamsCallback, this);
+
         /* Initialize Modalities */
-        service_server_ = root_nh.advertiseService("configure_modalities", &FTSBaseController::configureModalitiesCallback, this);        
+        configure_modalities_srv_ = root_nh.advertiseService("configure_modalities", &FTSBaseController::configureModalitiesCallback, this);
         modalities_loaded_ = false;
         modalities_configured_ = false;
         
         apply_areal_counterforce_ = false;
         
-        base_initialized_ = WheelControllerBase::setup(root_nh, controller_nh);
+        base_initialized_ = WheelControllerBase::setup(root_nh, wheel_ctrl_nh_);
         return base_initialized_;
 }
 
@@ -136,109 +144,156 @@ void FTSBaseController::starting(const ros::Time& time) {
 */
 void FTSBaseController::update(const ros::Time& time, const ros::Duration& period) {
         
-        if (running_) {
-                
-                std::array<double, 3> new_vel;
-                
-                if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
-                if (enableCounterForce_ && userIsGripping_ ) {
-                        force_input_ = applyGlobalCounterforce(force_input_);
-                        pub_resulting_force_after_counterforce_.publish(convertToMessage(force_input_));
-                } else if (apply_areal_counterforce_) {
-                        if (userIsGripping_) {
-                                force_input_ = applyAreaCounterforce(force_input_);
-                                pub_resulting_force_after_counterforce_.publish(convertToMessage(force_input_));
-                        }
-                        apply_areal_counterforce_ = false;
+    // First read states from the hardware
+    updateState();
+    geom_->calcDirect(platform_state_);
+    double platform_vel = std::pow(platform_state_.getVelX(), 2) + std::pow(platform_state_.getVelY(), 2) + std::pow(platform_state_.dRotRobRadS, 2);
+//     bool platform_is_moving_ = ( (platform_state_.getVelX() != 0.0) || (platform_state_.getVelY() != 0.0) || (platform_state_.dRotRobRadS != 0.0) );
+    bool platform_is_moving_ = ( platform_vel > 0.001 );
+    
+    std::array<double, 3> new_vel;
+    bool set_new_commands = true;
+
+    if (running_ and not use_twist_input_) {
+            if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
+
+//                 TODO: This should go into a modality
+            if (enableCounterForce_ && userIsGripping_ ) {
+                force_input_ = applyGlobalCounterforce(force_input_);
+                if (pub_resulting_force_after_counterforce_->trylock()) {
+                    pub_resulting_force_after_counterforce_->msg_ = convertToMessage(force_input_);
+                    pub_resulting_force_after_counterforce_->unlockAndPublish();
                 }
-                if (adapt_center_of_gravity_) force_input_ = adaptCenterOfGravity(force_input_);                
-                
-                // calculate velocity using spring-mass-damping 
-                for (int i = 0; i < 3; i++) {
-                        if (!use_controller_[i]) {
-                                ROS_INFO_ONCE("NO Controller set for Dimension %d", i);
-                                new_vel[i] = 0.0;
-                        } else {
-                                new_vel[i] = (b1_[i] * force_old_[i] + a1_[i]*velocity_old_[i]); //in scale 0-1
-                                
-                                force_old_[i] = force_input_[i];
-                                velocity_old_[i] = new_vel[i];
-                                
-                                new_vel[i] *= max_vel_[i]; //scaled back to max vel
-                        }
+            } else if (apply_areal_counterforce_) {
+                if (userIsGripping_) {
+                    force_input_ = applyAreaCounterforce(force_input_);
+                    if (pub_resulting_force_after_counterforce_->trylock()) {
+                        pub_resulting_force_after_counterforce_->msg_ = convertToMessage(force_input_);
+                        pub_resulting_force_after_counterforce_->unlockAndPublish();
+                    }
                 }
-                
-                
-                
-                //handle special cases for each dimension seperately
-                if ( new_vel[0] < -max_vel_[0]*backwardsMaxVelScale_) new_vel[0] = -max_vel_[0]*backwardsMaxVelScale_; //backwards x scale
-                if (yReversed_) new_vel[1] = -new_vel[1];  //inverse y
-                if (rotReversed_) new_vel[2] = -new_vel[2];  //inverse rotation
-                
-                for (int i = 0; i < 3; i++) {
-                        if (use_controller_[i] && std::fabs(new_vel[i] ) < 0.001 ) {
-                                new_vel[i] = 0.0; //stop robot with too less velocity
-                        }
-                }
-                delta_vel_ = std::pow(new_vel[0], 2) + std::pow(new_vel[1], 2) + std::pow(new_vel[2], 2); 
-                
-                
-                if (modalities_used_ != none ) new_vel = applyModalities(new_vel); //apply modalities
-                
-                geometry_msgs::Vector3 vel_msg, force_msg;
-                vel_msg.x = new_vel[0];
-                vel_msg.y = new_vel[1];
-                vel_msg.z = new_vel[2];
-                force_msg.x = force_input_[0];
-                force_msg.y = force_input_[1];
-                force_msg.z = force_input_[2];
-                pub_res_vel_.publish(vel_msg);
-                pub_force_lim_.publish(force_msg);
-                
-                if((std::fabs(new_vel[0] - velocity_old_[0])<0.0001) && (std::fabs(new_vel[1] - velocity_old_[1])<0.0001) && (std::fabs(new_vel[2] - velocity_old_[2])<0.0001)){
-                        target_.updated = false;
-                } else if (no_hw_output_) {
-                        ROS_WARN_THROTTLE(5.0, "[FTS_BASE_CTRLR] SIMULATION MODE, NO OUTPUT TO ROBOT, BUT SENDING VELOCITIES TO DEBUG TOPIC!");
-                        target_.updated = false;
+                apply_areal_counterforce_ = false;
+            }
+
+
+            if (adapt_center_of_gravity_) force_input_ = adaptCenterOfGravity(force_input_);                
+            
+
+            // calculate velocity using spring-mass-damping 
+            for (int i = 0; i < 3; i++) {
+                if (!use_controller_[i]) {
+                        ROS_INFO_ONCE("NO Controller set for Dimension %d", i);
+                        new_vel[i] = 0.0;
                 } else {
-                        
-                        boost::mutex::scoped_lock lock(mutex_);
-                        if (std::isnan(new_vel[0]) || std::isnan(new_vel[1]) || std::isnan(new_vel[2])) {
-                                ROS_FATAL("Received NaN-value in Twist message. Reset target to zero.");
-                                target_.state = PlatformState();
-                        } else {
-                                //TODO check if this is necessary
-                                target_.state.setVelX(limitValue(new_vel[0], max_vel_trans_)); 
-                                target_.state.setVelY(limitValue(new_vel[1], max_vel_trans_));
-                                target_.state.dRotRobRadS = limitValue(new_vel[2], max_vel_rot_);
-                        }
-                        target_.updated = true;
-                        target_.stamp = ros::Time::now();
+                    new_vel[i] = (b1_[i] * force_old_[i] + a1_[i]*velocity_old_[i]); //in scale 0-1
+                    force_old_[i] = force_input_[i];
+                    velocity_old_[i] = new_vel[i];
+                    new_vel[i] *= max_vel_[i]; //scaled back to max vel
+                    // stop robot when small velocity
+                    if (std::fabs(new_vel[i] ) < 0.001 ) {
+                        new_vel[i] = 0.0; 
+                    }
                 }
+            }
+            
+            //handle special cases for each dimension seperately
+            if ( new_vel[0] < -max_vel_[0]*backwardsMaxVelScale_) new_vel[0] = -max_vel_[0]*backwardsMaxVelScale_; //backwards x scale
+            if (yReversed_) new_vel[1] = -new_vel[1];  //inverse y
+            if (rotReversed_) new_vel[2] = -new_vel[2];  //inverse rotation
+            
+            delta_vel_ = std::pow(new_vel[0], 2) + std::pow(new_vel[1], 2) + std::pow(new_vel[2], 2); 
+            
+            
+            if (modalities_used_ != none ) new_vel = applyModalities(new_vel); //apply modalities
+            
+            if (pub_velocity_output_->trylock()) {
+                pub_velocity_output_->msg_.x = new_vel[0];
+                pub_velocity_output_->msg_.y = new_vel[1];
+                pub_velocity_output_->msg_.z = new_vel[2];
+                pub_velocity_output_->unlockAndPublish();
+            }
+            
+            if (no_hw_output_) {
+                ROS_WARN_THROTTLE(5.0, "[FTS_BASE_CTRLR] SIMULATION MODE, NO OUTPUT TO ROBOT, BUT SENDING VELOCITIES TO DEBUG TOPIC!");
+                set_new_commands = false;
+            }
+                                            
+    } else {
+        set_new_commands = false;
+        if (not platform_is_moving_ and can_be_running_ and not userIsGripping_) {
+            running_ = true;
                 
-                updateState();
-                pos_ctrl_.try_configure(*geom_);
-                WheelControllerBase::updateCtrl(time, period);
-                for (unsigned i=0; i<wheel_commands_.size(); i++){
-                        steer_joints_[i].setCommand(wheel_commands_[i].dVelGearSteerRadS);
-                        drive_joints_[i].setCommand(wheel_commands_[i].dVelGearDriveRadS);
-                }
-        } else {
-                ROS_WARN_THROTTLE(0.05, "Base Controller is not running ATM");
+            // orient wheels forward- it does not work really, but it is also not important!
+//             new_vel[0] = 0.001;
+//             new_vel[1] = 0.0;
+//             new_vel[2] = 0.0;
+//             set_new_commands = true;  
+//             ROS_WARN("Controller is running again. Orienting wheels forward...");
         }
+        else if (!running_) {
+            ROS_WARN_THROTTLE(10, "Base Controller is not running ATM");
+        }
+    }
+    
+    if (platform_is_moving_ and (not userIsGripping_ || not running_ || no_hw_output_) ) { 
+        for (int i = 0; i < 3; i++) {
+            new_vel[i] = 0.0;
+            force_old_[i] = 0.0;
+            velocity_old_[i] = new_vel[i];
+        }
+        set_new_commands = true;
+    }
+    
+    if (running_ and use_twist_input_) {
+        boost::mutex::scoped_lock lock(twist_mutex_);
+        new_vel[0] = twist_command_.linear.x;
+        new_vel[1] = twist_command_.linear.y;
+        new_vel[2] = twist_command_.angular.z;    
+        set_new_commands = true;        
+    }
+    
+    if (set_new_commands) {
+        boost::mutex::scoped_lock lock(mutex_);
+        if (std::isnan(new_vel[0]) || std::isnan(new_vel[1]) || std::isnan(new_vel[2])) {
+            ROS_FATAL("Received NaN-value in Twist message. Reset target to zero.");
+            target_.state = PlatformState();
+        } else {
+            //TODO check if this is necessary
+            target_.state.setVelX(limitValue(new_vel[0], max_vel_trans_)); 
+            target_.state.setVelY(limitValue(new_vel[1], max_vel_trans_));
+            target_.state.dRotRobRadS = limitValue(new_vel[2], max_vel_rot_);
+        }
+        target_.updated = true;
+        target_.stamp = ros::Time::now();
+    }
+    else {
+        target_.updated = false;
+    }
+    
+    pos_ctrl_.try_configure(*geom_);
+    WheelControllerBase::updateCtrl(time, period);
+    for (unsigned i=0; i<wheel_commands_.size(); i++){
+        steer_joints_[i].setCommand(wheel_commands_[i].dVelGearSteerRadS);
+        drive_joints_[i].setCommand(wheel_commands_[i].dVelGearDriveRadS);
+    }
+
 }
+
+
 
 /**
  * \brief Stops the controller
  */
 void FTSBaseController::stopController() {
-        running_ = false;
+    can_be_running_ = false;
+    running_ = false;
 }
 
 /**
  * \brief Stops the controller
  */
 void FTSBaseController::stopping(const ros::Time& /*time*/) {
+    stopController();
 }
 
 /**
@@ -257,7 +312,7 @@ void FTSBaseController::resetController() {
         velocity_old_[0] = 0.0;
         velocity_old_[1] = 0.0;
         velocity_old_[2] = 0.0;
-        running_ = true;
+        can_be_running_ = true;
 }
 
 
@@ -432,6 +487,41 @@ bool FTSBaseController::configureControllerModalities() {
         return success;
 }
 
+bool FTSBaseController::setUseTwistInputCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp) {
+ 
+    stopController();
+    ROS_DEBUG("Called service to set twist input on/off");
+    
+    resp.success = true;
+    use_twist_input_ = not use_twist_input_;
+    if (use_twist_input_) {
+        resp.message = "RoboTrainer Controller uses _twist_ input!";
+    } else {
+        resp.message = "RoboTrainer Controller uses _force_ input!";
+    }
+    
+    ROS_INFO(resp.message.c_str());
+    
+    resetController();
+
+    return true;
+}
+
+bool FTSBaseController::updateWheelParamsCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp) {
+    
+    stopController();
+    ROS_DEBUG("Called service to update kinematic configuration");
+    
+    resp.success = true;
+    resp.success &= cob_omni_drive_controller::parseWheelParams(wheel_params_, wheel_ctrl_nh_);
+    resp.success &= GeomController<UndercarriageCtrl>::update(wheel_params_);
+    ROS_INFO("Kinematics sucessfully updated!");
+    
+    resetController();
+
+    return true;
+}
+
 /**
 * \brief Callback function for service "configure_modalities"
 */
@@ -468,9 +558,8 @@ std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> 
                         vel_after_modalities[0] = after_area_mod.linear.x;
                         vel_after_modalities[1] = after_area_mod.linear.y;
                         vel_after_modalities[2] = after_area_mod.angular.z;
-                        pub_cmd_.publish(after_area_mod);
-                        
                         break;
+
                 case controller_modalities:
                         msg_before_modality.linear.x=base_vel[0];
                         msg_before_modality.linear.y=base_vel[1];
@@ -497,7 +586,6 @@ std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> 
                         vel_after_modalities[0] = output_msg_after_modality.twist_.linear.x;
                         vel_after_modalities[1] = output_msg_after_modality.twist_.linear.y;
                         vel_after_modalities[2] = output_msg_after_modality.twist_.angular.z;
-                        pub_cmd_.publish(output_msg_after_modality.twist_);
                         break;
         }
         return vel_after_modalities;
@@ -602,6 +690,8 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
         
         no_hw_output_ = config.no_hw_output;
+        use_twist_input_ = config.use_twist_input;
+        ROS_INFO_COND(use_twist_input_, "RoboTrainer controller now using _twist_ input");
 
         if (config.apply_base_controller_params) {
                 ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
@@ -736,34 +826,58 @@ std::array<double, 3> FTSBaseController::getFTSInput( const ros::Time& time ) {
         force_input.wrench.force.y  = hw_fts_.getForce()[1];
         force_input.wrench.torque.z = hw_fts_.getTorque()[2];
         
-        pub_wrench_lim_.publish(force_input);
+        if (pub_force_input_raw_->trylock()) {
+            pub_force_input_raw_->msg_ = force_input;
+            pub_force_input_raw_->unlockAndPublish();
+        }
         
         raw_fts_input[0] = force_input.wrench.force.x;
         raw_fts_input[1] = force_input.wrench.force.y;
         raw_fts_input[2] = force_input.wrench.torque.z;
+        
+        if (std::isnan(raw_fts_input[0]) || std::isnan(raw_fts_input[1]) || std::isnan(raw_fts_input[2])) {
+            ROS_FATAL("Received NaN-value in Force data. Reset target to zero.");
+            raw_fts_input[0] = 0.0;
+            raw_fts_input[1] = 0.0;
+            raw_fts_input[2] = 0.0;
+        }
 
         bool noInput = ( (raw_fts_input[0] == 0.0) && (raw_fts_input[1] == 0.0) && (raw_fts_input[2] == 0.0) );
+        bool noUserInput = ( (std::fabs(raw_fts_input[0]) < min_ft_[0]/2) && (std::fabs(raw_fts_input[1]/2) < min_ft_[1]) && (std::fabs(raw_fts_input[2]/2) < min_ft_[2]) );
         bool standingRobotNoInput = ( (delta_vel_ < 0.001) && (std::fabs(raw_fts_input[0]) < min_ft_[0]) && (std::fabs(raw_fts_input[1]) < min_ft_[1]) && (std::fabs(raw_fts_input[2]) < min_ft_[2]) );
-        //no user grip detected in one frame, could be coincidence so count upwards
-        if ( noInput || standingRobotNoInput ) {
+        // no user grip detected in one frame, could be coincidence so count upwards
+        if ( noInput || standingRobotNoInput || noUserInput ) {
                 
-                if (!noInput) ROS_DEBUG("Robot detected as standing and not gripped: Delta_v: [%.6f], Input: [%.6f, %.6f, %.6f]", delta_vel_, raw_fts_input[0], raw_fts_input[1], raw_fts_input[2]);
+//                 if (!noInput) ROS_DEBUG("Robot detected as standing and not gripped: Delta_v: [%.6f], Input: [%.6f, %.6f, %.6f]", delta_vel_, raw_fts_input[0], raw_fts_input[1], raw_fts_input[2]);
+                
+//                 if (noUserInput) ROS_DEBUG("Robot detected as not gripped: Delta_v: [%.6f], Input: [%.6f, %.6f, %.6f]", raw_fts_input[0], raw_fts_input[1], raw_fts_input[2]);
                 
                 if (userIsGripping_) {
                         noGripTicks_++; 
-                        if (noGripTicks_ > 3) { 
+                        if (noGripTicks_ > 3) {
                                 userIsGripping_ = false; 
                                 timeSinceReleasing_ = time;
                         } //after x consecutive no-grips set user as not gripped
                 }
                 
-                return zeroForce_;
+                raw_fts_input = zeroForce_;
+                force_input.wrench.force.x  = 0;
+                force_input.wrench.force.y  = 0;
+                force_input.wrench.torque.z = 0;
         //user gripping
         } else {
                 userIsGripping_ = true;
                 noGripTicks_ = 0;
                 timeSinceReleasing_ = time + ros::Duration(1.0);
-                return raw_fts_input;
+        }
+        forceInputToLed( force_input );
+        return raw_fts_input;
+}
+
+void FTSBaseController::forceInputToLed( const geometry_msgs::WrenchStamped force_input ) {
+    if (pub_input_force_for_led_->trylock()) {
+            pub_input_force_for_led_->msg_ = force_input;
+            pub_input_force_for_led_->unlockAndPublish();
         }
 }
 

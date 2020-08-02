@@ -1,0 +1,21 @@
+## The keys are used from following definition
+# STATES_ANGULAR = {1: [16, "CLOSED"],
+#                   2: [21, "MIDDLE_CLOSED"],
+#                   3: [26, "MIDDLE"],
+#                   4: [31, "MIDDLE_OPENED"],
+#                   5: [36, "OPENED"],
+#                  }
+
+# STATES_LINEAR = {1: [16, "CLOSED"],
+#                  2: [21, "MIDDLE_CLOSED"],
+#                  3: [31, "MIDDLE_OPENED"],
+#                  4: [36, "OPENED"],
+#                 }
+
+uint8 angular_key
+uint8 linear_key
+---
+string angular
+string linear
+bool success
+string message

@@ -7,17 +7,19 @@ find_package(catkin REQUIRED COMPONENTS
     cob_omni_drive_controller
     controller_interface
     force_torque_sensor
-    hardware_interface
     geometry_msgs
+    hardware_interface
+    iirob_led
+    leg_tracker
+    message_generation
     realtime_tools
     rosparam_handler
     robotrainer_modalities
     robotrainer_helper_types
+    std_msgs
     tf2
-    tf2_ros
     tf2_geometry_msgs
-    leg_tracker
-    iirob_led
+    tf2_ros
 )
 
 find_package(Eigen3)
@@ -29,6 +31,15 @@ else()
   set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
   set(Eigen_LIBRARIES ${EIGEN3_LIBRARIES})
 endif()
+
+add_service_files(
+  FILES
+  GetRearWheelsState.srv
+  SetRearWheelsState.srv
+)
+
+generate_messages()
+
 
 generate_dynamic_reconfigure_options(
   cfg/FTSBaseController.cfg
@@ -47,7 +58,7 @@ endif()
 ## catkin specific configuration ##
 ###################################
 catkin_package(
-  CATKIN_DEPENDS controller_interface hardware_interface geometry_msgs realtime_tools cob_omni_drive_controller leg_tracker iirob_led robotrainer_modalities robotrainer_helper_types
+  CATKIN_DEPENDS controller_interface hardware_interface geometry_msgs realtime_tools cob_omni_drive_controller leg_tracker iirob_led robotrainer_modalities robotrainer_helper_types message_runtime
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
   DEPENDS Eigen

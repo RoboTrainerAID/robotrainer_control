@@ -35,17 +35,12 @@ public:
 private:
         dynamic_reconfigure::Server<robotrainer_controllers::PassiveBehaviorControllerConfig>* p_dysrv_;
 
-        ros::Publisher SlidingIntegral_pub_;
-        ros::Publisher Adaptionfactor_pub_;
-        ros::Publisher RealInputforce_pub_;
-        ros::Publisher SlidingIntegral3d_pub_;
-        ros::Publisher ChuyIntegral3d_pub_;
+        realtime_tools::RealtimePublisher<std_msgs::Float64> *pub_sliding_integral_;
+        realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_adaption_factor_;
+        realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_real_input_force_;
+        realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_sliding_integral_3d_;
+        realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_chuy_integral_3d_;
         
-        std_msgs::Float64 slidingIntegralVal_msg_;
-        geometry_msgs::Vector3 adaptionFactor_msg_;
-        geometry_msgs::Vector3 realInputforce_msg_;
-        geometry_msgs::Vector3 slidingIntegral3d_msg_;
-
         boost::shared_ptr<robotrainer_helper_types::SlidingIntegral> integral_ptr_{ new robotrainer_helper_types::SlidingIntegral{}};
         boost::shared_ptr<robotrainer_helper_types::SlidingIntegralMultiDim> integral_MD_ptr_{new robotrainer_helper_types::SlidingIntegralMultiDim{}};
         boost::shared_ptr<robotrainer_helper_types::ChuyIntegralMultiDim> chuy_MD_ptr_{new robotrainer_helper_types::ChuyIntegralMultiDim{}};
