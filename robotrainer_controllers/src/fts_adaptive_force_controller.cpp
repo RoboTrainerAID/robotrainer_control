@@ -284,44 +284,44 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 } else if (stepInitialized_ && stepActivated_) {
                         updateTravelledDistance();
                         switch (currentStep_) {
-                                case baseX: 
-                                        ROS_WARN_ONCE("[PARAM BASE X] - STARTED");
-                                        fts_input_raw = baseForceTest(fts_input_raw);
-                                        break;
-                                case baseYLeft:
-                                        ROS_WARN_ONCE("[PARAM BASE Y LEFT] - STARTED");
-                                        fts_input_raw = baseForceTest(fts_input_raw);
-                                        break;
-                                case baseYRight:
-                                        ROS_WARN_ONCE("[PARAM BASE Y RIGHT] - STARTED");
-                                        fts_input_raw = baseForceTest(fts_input_raw);
-                                        break;
-                                case baseRotLeft:
-                                        ROS_WARN_ONCE("[PARAM BASE ROT LEFT] - STARTED");
-                                        fts_input_raw = baseForceTest(fts_input_raw);
-                                        break;
-                                case baseRotRight:
-                                        ROS_WARN_ONCE("[PARAM BASE ROT RIGHT] - STARTED");
-                                        fts_input_raw = baseForceTest(fts_input_raw);
-                                        break;
-                                case recordFeetDistance:
-                                        ROS_WARN_ONCE("[PARAM RECORD FEET DISTANCE] - STARTED");
-                                        fts_input_raw = recordBaseFeetDistance( fts_input_raw );
-                                        break;
-                                case adaptX:
-                                        ROS_WARN_ONCE("[PARAM ADAPTIVE X] - STARTED");
-                                        parametrizeAdaptForceX();
-                                        break;
-                                case finished:
-                                        ROS_WARN("[PARAM FINISHED!] - Parametrization has finished, setting robot to active!");
-                                        switchParametrizationStep();
-                                        parametrization_active_ = false;
-                                        setActiveDimensions( all_active_ );
-                                        //adaption_is_active_ = true;
-                                        break;
-                                default:
-                                        ROS_WARN("Invalid parametrization step set, thus finishing parametrization now");
-                                        currentStep_ = finished;
+                            case baseX: 
+                                    ROS_WARN_ONCE("[PARAM BASE X] - STARTED");
+                                    fts_input_raw = baseForceTest(fts_input_raw);
+                                    break;
+                            case baseYLeft:
+                                    ROS_WARN_ONCE("[PARAM BASE Y LEFT] - STARTED");
+                                    fts_input_raw = baseForceTest(fts_input_raw);
+                                    break;
+                            case baseYRight:
+                                    ROS_WARN_ONCE("[PARAM BASE Y RIGHT] - STARTED");
+                                    fts_input_raw = baseForceTest(fts_input_raw);
+                                    break;
+                            case baseRotLeft:
+                                    ROS_WARN_ONCE("[PARAM BASE ROT LEFT] - STARTED");
+                                    fts_input_raw = baseForceTest(fts_input_raw);
+                                    break;
+                            case baseRotRight:
+                                    ROS_WARN_ONCE("[PARAM BASE ROT RIGHT] - STARTED");
+                                    fts_input_raw = baseForceTest(fts_input_raw);
+                                    break;
+                            case recordFeetDistance:
+                                    ROS_WARN_ONCE("[PARAM RECORD FEET DISTANCE] - STARTED");
+                                    fts_input_raw = recordBaseFeetDistance( fts_input_raw );
+                                    break;
+                            case adaptX:
+                                    ROS_WARN_ONCE("[PARAM ADAPTIVE X] - STARTED");
+                                    parametrizeAdaptForceX();
+                                    break;
+                            case finished:
+                                    ROS_WARN("[PARAM FINISHED!] - Parametrization has finished, setting robot to active!");
+                                    switchParametrizationStep();
+                                    parametrization_active_ = false;
+                                    setActiveDimensions( all_active_ );
+                                    //adaption_is_active_ = true;
+                                    break;
+                            default:
+                                    ROS_WARN("Invalid parametrization step set, thus finishing parametrization now");
+                                    currentStep_ = finished;
                         }
                 } else {
                         fts_input_raw = zeroForce_; //prevent robot from moving when nobody is gripping it
@@ -483,205 +483,257 @@ void FTSAdaptiveForceController::initParametrizationStep() {
  */
 std::array<double, 3> FTSAdaptiveForceController::baseForceTest( std::array<double, 3> fts_input_raw) {
         
-        if (userIsGripping()) {
-                last_gripped_time_ = current_loop_time_;
-        }
-        
-        double secondsSinceLastGrip = (current_loop_time_ - last_gripped_time_).toSec();
-        
-        if (baseForce_testCompleted_) { //return robot to start new phase
-                ledForceInput_ = 0.0;
-                if ( userIsGripping()) {
-                        setLEDPhase(stepAwayFromRobot);
-                        last_gripped_time_ = current_loop_time_;
-                        ROS_INFO_THROTTLE(5, "[BASE] - COMPLETED, USER STILL GRIPPING... Step away from Robot in order to reset its position.");
-                        return zeroForce_;
-                } else if (!baseForce_fts_offset_reset_) {
-                        if (secondsSinceLastGrip > 0.1) {
-                                recalculateFTSOffsets();
-                                baseForce_fts_offset_reset_ = true;
-                                secondsSinceLastGrip = 0.0;
-                        }
-                        
-                } else if (travelledDistance_ > 0.0) {//push robot back to starting point
-                        if (secondsSinceLastGrip > 1.0 ) {
-                            setLEDPhase(robotInAutomaticMovement);
-                            ROS_DEBUG_ONCE("[BASE] - PHASE COMPLETED, RETURNING - Phase completed, pushing robot back to start.");
-                            ROS_WARN_THROTTLE(0.5, "[BASE COMPLETED] - Pushing robot back (CURR_DIST: %.3f)", travelledDistance_);
-                            return returnRobotToStartpoint();
-                        } else {
-                                return zeroForce_;
-                        }
-                } else { //robot has returned
-                        ROS_INFO("[BASE TEST] - COMPLETED AND RETURNED! - Phase completed and robot returned to starting point. Starting new Phase");
-                        recalculateFTSOffsets();
-                        baseForce_testCompleted_ = false;
-                        baseForce_fts_offset_reset_ = false;
-                        setLEDPhase(phaseFinished);
-                        switchParametrizationStep(); // to trigger the next step
-                        return zeroForce_;
-                }
-        }
-        
-        // test not completed yet
-        double currentVirtualSpringForce = travelledDistance_ * baseForce_springConstant_;
-        double userInput = 0.0;
-        switch(currentStep_) {
+    if (userIsGripping()) {
+            last_gripped_time_ = current_loop_time_;
+    }
+    
+    double secondsSinceLastGrip = (current_loop_time_ - last_gripped_time_).toSec();
+    
+    if (baseForce_testCompleted_) { //return robot to start new phase
+        ledForceInput_ = 0.0;
+        if ( userIsGripping() /*|| userBehindRobot()*/ ) {
+            setLEDPhase(stepAwayFromRobot);
+            last_gripped_time_ = current_loop_time_;
+            ROS_INFO_THROTTLE(5, "[BASE] - COMPLETED, USER STILL GRIPPING... Step away from Robot in order to reset its position.");
+            return zeroForce_;
+        } else if (!autonomously_returning_ && secondsSinceLastGrip > 1.0) {
+            setLEDPhase(robotInAutomaticMovement);
+            FTSBaseController::stopController();
+            FTSBaseController::setUseTwistInput(true);
+            autonomously_returning_ = true;
+            autonomously_needed_time_sec_ = travelledDistance_ / 0.1;
+            autonomously_start_time_ = current_loop_time_;
+            FTSBaseController::restartController();
+            ROS_INFO("[BASE] - PHASE COMPLETED, RETURNING autonomously to start with following parameter: \n needed_time_sec: %f \n last_time_: %f \n velocity: %f", autonomously_needed_time_sec_, autonomously_start_time_.toSec(), 0.1);
+        } else if ( autonomously_returning_ ) { //  move robot back to starting point
+            autonomously_traveled_time_ = current_loop_time_ - autonomously_start_time_;
+            
+            if (autonomously_traveled_time_.toSec() < 0.995*autonomously_needed_time_sec_)
+            {
+                autonomously_returning_velocity = 0.1;
+            } else {
+                autonomously_returning_velocity = 0.0;
+            }
+            switch(currentStep_) {
                 case baseX:
-                        userInput = fts_input_raw[0];
-                        break;
+                    twist_command_.linear.x = -autonomously_returning_velocity;
+                    break;
                 case baseYLeft:
-                        userInput = fts_input_raw[1];
-                        break;
+                    twist_command_.linear.y = -autonomously_returning_velocity;
+                    break;
                 case baseYRight:
-                        userInput = -1.0 * fts_input_raw[1]; // invert in order to use positive spring force as usual
-                        break;
+                    twist_command_.linear.y = autonomously_returning_velocity; // invert in order to use positive spring force as usual
+                    break;
                 case baseRotLeft:
-                        userInput = fts_input_raw[2];
-                        break;
+                    twist_command_.angular.z = -autonomously_returning_velocity;
+                    break;
                 case baseRotRight:
-                        userInput = -1.0 * fts_input_raw[2];// invert in order to use positive spring force as usual
-                        break;
-        }
-        
-        if ( !userIsGripping() ) {
-                if (travelledDistance_ > 0.01 ) {
-                        if (secondsSinceLastGrip < 1.0) {
-                                setLEDPhase(stepAwayFromRobot);
-                                return zeroForce_;
-                        } else {
-                                setLEDPhase(robotInAutomaticMovement);
-                                ledForceInput_ = 0.0;
-                                ROS_DEBUG_THROTTLE(5, "[BASE] - ABANDONED IN PHASE! - Slowly returning robot...");
-                                return returnRobotToStartpoint();
-                        }
-                        ROS_DEBUG_THROTTLE(5, "[BASE] - ABANDONED IN PHASE! - Slowly returning robot...");
-                        return returnRobotToStartpoint();
-                } else {
-                        resetBaseForceTest();
-                        setLEDPhase(waitForInput);
-                        ROS_INFO_THROTTLE(5, "[BASE] - WAIT FOR START- Grab the Robot and move in the shown direction to start recording !");
-                        return zeroForce_;
-                }   
-        } else {
-                 if ( (userInput < 0.0) && (travelledDistance_ < 0.01)) {
-                         ROS_WARN_THROTTLE(0.5, "WRONG DIRECTION !");
-                        setLEDPhase(waitForInput);
-                        return zeroForce_;
-                } else { //only case not returning 
-                        ledForceInput_ = userInput;
-                        setLEDPhase(showForce);
-                }
-        }
-        
-        double secondsInPhase = (current_loop_time_ - baseForce_startingTime_).toSec();
-        double effectiveForce = std::fmax(-50.0, userInput - currentVirtualSpringForce);
-         
-        //add new value to average distances
-        baseForce_travelledDistanceList_.push_back(travelledDistance_);
-        if (secondsInPhase > baseForce_movingAverageTimeframe_) { //erase elements longer than "maxTime" ago
-                baseForce_travelledDistanceList_.pop_front(); 
-        }
-        
-        //check if distance is kept over the time (using average distances) and minimum required force is met
-        double averageDistance = std::accumulate(baseForce_travelledDistanceList_.begin(), baseForce_travelledDistanceList_.end(), 0.0) / baseForce_travelledDistanceList_.size();
-        double diffToAvg = std::fabs(travelledDistance_ - averageDistance);
-        if ((diffToAvg < baseForce_holdingDistance_) && (userInput > baseForce_minimumForce_ ) ) {
-                baseForce_storeRawInput_.push_back(userInput);
-                baseForce_stableForceCounter_++;
-        } else {
-                baseForce_stableForceCounter_ = 0;
-                baseForce_storeRawInput_.clear();
-        }
-        
-       // sendDebugTopicsParamBase(travelledDistance_, averageDistance, userInput, currentVirtualSpringForce, effectiveForce); // ACTIVATE FOR DEBUG
-        
-        //Check phase completion and return spring-modified force input
-        if (baseForce_stableForceCounter_ < 120) {
-                switch(currentStep_) {
-                        case baseX:
-                                return {effectiveForce, 0.0, 0.0};
-                        case baseYLeft:
-                                return {0.0, effectiveForce, 0.0};
-                        case baseYRight:
-                                return {0.0, -1.0 * effectiveForce, 0.0};
-                        case baseRotLeft:
-                                return {0.0, 0.0, effectiveForce};
-                        case baseRotRight:
-                                return {0.0, 0.0, -1.0 * effectiveForce};
-                        default:
-                                return zeroForce_;
-                }
-        } else { //phase completed
+                    twist_command_.angular.z = -autonomously_returning_velocity;;// invert in order to use positive spring force as usual
+                    break;
+            }
+            if (autonomously_traveled_time_.toSec() >= autonomously_needed_time_sec_)
+            {
+                FTSBaseController::stopController();
+                FTSBaseController::setUseTwistInput(false);
+                autonomously_returning_ = false;
+                autonomously_needed_time_sec_ = 0;
+                FTSBaseController::restartController();
                 
-                double stableForce = std::accumulate(baseForce_storeRawInput_.begin(), baseForce_storeRawInput_.end(), 0.0) / baseForce_storeRawInput_.size();
-                
-                //set retrieved force as base force for the dimension
-                switch (currentStep_) {
-                        case baseX:
-                                userParametrized_maxFT_[0] = stableForce;
-                                ROS_INFO("[BASE X] - COMPLETED, RECORD - Stable X-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])", 
-                                         stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                                break;
-                        case baseYLeft:
-                                userParametrized_maxFT_[1] = stableForce;
-                                ROS_INFO("[BASE Y LEFT] - COMPLETED, RECORD - Stable Y-Left-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])", 
-                                         stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                                break;
-                        case baseYRight:
-                                userParametrized_maxFT_[1] = 0.5 * stableForce + 0.5 * userParametrized_maxFT_[1];
-                                ROS_INFO("[BASE Y RIGHT] - COMPLETED, RECORD - Stable Y-Right-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of y-left + y-right)", 
-                                         stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                                break;
-                        case baseRotLeft:
-                                userParametrized_maxFT_[2] = std::fabs(stableForce);
-                                ROS_INFO("[BASE ROT LEFT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])", 
-                                         std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                                break;
-                        case baseRotRight:
-                                userParametrized_maxFT_[2] = 0.5 *std::fabs(stableForce) + 0.5 * userParametrized_maxFT_[2];
-                                ROS_INFO("[BASE ROT RIGHT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of torque-left + torque-right)", 
-                                         std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                                baseForce_allParamsStored_ = true;
-                                break;
-                }
-                
-                //adapt max velocity
-                std::array<double,3> oldMaxFt = getMaxFt(); //get again in case preparametrized values get parametrized again
-                std::array<double,3> oldMaxVel = getMaxVel();
-                userParametrized_maxVel_ = oldMaxVel;
-                double percentFromOldMax;
-                switch (currentStep_) {
-                        case baseX:
-                                percentFromOldMax = userParametrized_maxFT_[0] / oldMaxFt[0];
-                                if ( percentFromOldMax < 1.0 ) {
-                                        userParametrized_maxVel_[0] = percentFromOldMax * oldMaxVel[0];
-                                        ROS_INFO("[BASE X] - COMPLETED, CHANGE VELOCITY - New X-Force by factor %.2f lower than previous standard force! Lowering maxVelocity to [%.2f, %.2f, %.2f]", 
-                                                 percentFromOldMax, userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]);
-                                }
-                                break;
-                        case baseYLeft:
-                        case baseYRight:
-                                percentFromOldMax = userParametrized_maxFT_[1] / oldMaxFt[1];
-                                if ( percentFromOldMax < 1.0 ) {
-                                        userParametrized_maxVel_[1] = percentFromOldMax * oldMaxVel[1];
-                                        ROS_INFO("[BASE Y] - COMPLETED, CHANGE VELOCITY - New Y-Force by factor %.2f lower than previous standard force! Lowering maxVelocity to [%.2f, %.2f, %.2f]", 
-                                                 percentFromOldMax, userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]);
-                                }
-                                break;
-                        case baseRotLeft:
-                        case baseRotRight:
-                                percentFromOldMax = userParametrized_maxFT_[2] / oldMaxFt[2];
-                                if ( percentFromOldMax < 1.0 ) {
-                                        userParametrized_maxVel_[2] = percentFromOldMax * oldMaxVel[2];
-                                        ROS_INFO("[BASE ROT] - COMPLETED, CHANGE VELOCITY - New Torque by factor %.2f lower than previous standard torque! Lowering maxVelocity to [%.2f, %.2f, %.2f]", 
-                                                 percentFromOldMax, userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]);
-                                }
-                                break;
-                }
-                baseForce_testCompleted_ = true;
-                return zeroForce_;
-        }//Phase completed
+                ROS_INFO("[BASE TEST] - COMPLETED AND RETURNED! - Phase completed and robot returned to starting point. Starting new Phase");
+                recalculateFTSOffsets();
+                baseForce_testCompleted_ = false;
+                baseForce_fts_offset_reset_ = false;
+                setLEDPhase(phaseFinished);
+                switchParametrizationStep(); // to trigger the next step
+            }            
+        }
+//             else if (!baseForce_fts_offset_reset_) {
+//                     if (secondsSinceLastGrip > 0.1) {
+//                             recalculateFTSOffsets();
+//                             baseForce_fts_offset_reset_ = true;
+//                             secondsSinceLastGrip = 0.0;
+//                     }
+//                     
+//             } else if (travelledDistance_ > 0.0) {
+//                     if (secondsSinceLastGrip > 1.0 ) {
+//                         setLEDPhase(robotInAutomaticMovement);
+//                         ROS_DEBUG_ONCE("[BASE] - PHASE COMPLETED, RETURNING - Phase completed, pushing robot back to start.");
+//                         ROS_WARN_THROTTLE(0.5, "[BASE COMPLETED] - Pushing robot back (CURR_DIST: %.3f)", travelledDistance_);
+//                         return returnRobotToStartpoint();
+//                     } else {
+//                             return zeroForce_;
+//                     }
+//             } else { //robot has returned
+//                     ROS_INFO("[BASE TEST] - COMPLETED AND RETURNED! - Phase completed and robot returned to starting point. Starting new Phase");
+//                     recalculateFTSOffsets();
+//                     baseForce_testCompleted_ = false;
+//                     baseForce_fts_offset_reset_ = false;
+//                     setLEDPhase(phaseFinished);
+//                     switchParametrizationStep(); // to trigger the next step
+//                     return zeroForce_;
+//             }
+        return zeroForce_;
+    }        
+    
+    // test not completed yet
+    double currentVirtualSpringForce = travelledDistance_ * baseForce_springConstant_;
+    double userInput = 0.0;
+    switch(currentStep_) {
+        case baseX:
+            userInput = fts_input_raw[0];
+            break;
+        case baseYLeft:
+            userInput = fts_input_raw[1];
+            break;
+        case baseYRight:
+            userInput = -1.0 * fts_input_raw[1]; // invert in order to use positive spring force as usual
+            break;
+        case baseRotLeft:
+            userInput = fts_input_raw[2];
+            break;
+        case baseRotRight:
+            userInput = -1.0 * fts_input_raw[2];// invert in order to use positive spring force as usual
+            break;
+    }
+    
+    if ( !userIsGripping() ) {
+            if (travelledDistance_ > 0.01 ) {
+                    if (secondsSinceLastGrip < 1.0) {
+                            setLEDPhase(stepAwayFromRobot);
+                            return zeroForce_;
+                    } else {
+                            setLEDPhase(robotInAutomaticMovement);
+                            ledForceInput_ = 0.0;
+                            ROS_DEBUG_THROTTLE(5, "[BASE] - ABANDONED IN PHASE! - Slowly returning robot...");
+                            return returnRobotToStartpoint();
+                    }
+                    ROS_DEBUG_THROTTLE(5, "[BASE] - ABANDONED IN PHASE! - Slowly returning robot...");
+                    return returnRobotToStartpoint();
+            } else {
+                    resetBaseForceTest();
+                    setLEDPhase(waitForInput);
+                    ROS_INFO_THROTTLE(5, "[BASE] - WAIT FOR START- Grab the Robot and move in the shown direction to start recording !");
+                    return zeroForce_;
+            }   
+    } else {
+                if ( (userInput < 0.0) && (travelledDistance_ < 0.01)) {
+                        ROS_WARN_THROTTLE(0.5, "WRONG DIRECTION !");
+                    setLEDPhase(waitForInput);
+                    return zeroForce_;
+            } else { //only case not returning 
+                    ledForceInput_ = userInput;
+                    setLEDPhase(showForce);
+            }
+    }
+    
+    double secondsInPhase = (current_loop_time_ - baseForce_startingTime_).toSec();
+    double effectiveForce = std::fmax(-50.0, userInput - currentVirtualSpringForce);
+        
+    //add new value to average distances
+    baseForce_travelledDistanceList_.push_back(travelledDistance_);
+    if (secondsInPhase > baseForce_movingAverageTimeframe_) { //erase elements longer than "maxTime" ago
+            baseForce_travelledDistanceList_.pop_front(); 
+    }
+    
+    //check if distance is kept over the time (using average distances) and minimum required force is met
+    double averageDistance = std::accumulate(baseForce_travelledDistanceList_.begin(), baseForce_travelledDistanceList_.end(), 0.0) / baseForce_travelledDistanceList_.size();
+    double diffToAvg = std::fabs(travelledDistance_ - averageDistance);
+    if ((diffToAvg < baseForce_holdingDistance_) && (userInput > baseForce_minimumForce_ ) ) {
+            baseForce_storeRawInput_.push_back(userInput);
+            baseForce_stableForceCounter_++;
+    } else {
+            baseForce_stableForceCounter_ = 0;
+            baseForce_storeRawInput_.clear();
+    }
+    
+    // sendDebugTopicsParamBase(travelledDistance_, averageDistance, userInput, currentVirtualSpringForce, effectiveForce); // ACTIVATE FOR DEBUG
+    
+    //Check phase completion and return spring-modified force input
+    if (baseForce_stableForceCounter_ < 120) {
+            switch(currentStep_) {
+                    case baseX:
+                            return {effectiveForce, 0.0, 0.0};
+                    case baseYLeft:
+                            return {0.0, effectiveForce, 0.0};
+                    case baseYRight:
+                            return {0.0, -1.0 * effectiveForce, 0.0};
+                    case baseRotLeft:
+                            return {0.0, 0.0, effectiveForce};
+                    case baseRotRight:
+                            return {0.0, 0.0, -1.0 * effectiveForce};
+                    default:
+                            return zeroForce_;
+            }
+    } else { //phase completed
+            
+            double stableForce = std::accumulate(baseForce_storeRawInput_.begin(), baseForce_storeRawInput_.end(), 0.0) / baseForce_storeRawInput_.size();
+            
+            //set retrieved force as base force for the dimension
+            switch (currentStep_) {
+                    case baseX:
+                            userParametrized_maxFT_[0] = stableForce;
+                            ROS_INFO("[BASE X] - COMPLETED, RECORD - Stable X-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])", 
+                                        stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                            break;
+                    case baseYLeft:
+                            userParametrized_maxFT_[1] = stableForce;
+                            ROS_INFO("[BASE Y LEFT] - COMPLETED, RECORD - Stable Y-Left-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])", 
+                                        stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                            break;
+                    case baseYRight:
+                            userParametrized_maxFT_[1] = 0.5 * stableForce + 0.5 * userParametrized_maxFT_[1];
+                            ROS_INFO("[BASE Y RIGHT] - COMPLETED, RECORD - Stable Y-Right-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of y-left + y-right)", 
+                                        stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                            break;
+                    case baseRotLeft:
+                            userParametrized_maxFT_[2] = std::fabs(stableForce);
+                            ROS_INFO("[BASE ROT LEFT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])", 
+                                        std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                            break;
+                    case baseRotRight:
+                            userParametrized_maxFT_[2] = 0.5 *std::fabs(stableForce) + 0.5 * userParametrized_maxFT_[2];
+                            ROS_INFO("[BASE ROT RIGHT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of torque-left + torque-right)", 
+                                        std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                            baseForce_allParamsStored_ = true;
+                            break;
+            }
+            
+            //adapt max velocity
+            std::array<double,3> oldMaxFt = getMaxFt(); //get again in case preparametrized values get parametrized again
+            std::array<double,3> oldMaxVel = getMaxVel();
+            userParametrized_maxVel_ = oldMaxVel;
+            double percentFromOldMax;
+            switch (currentStep_) {
+                    case baseX:
+                            percentFromOldMax = userParametrized_maxFT_[0] / oldMaxFt[0];
+                            if ( percentFromOldMax < 1.0 ) {
+                                    userParametrized_maxVel_[0] = percentFromOldMax * oldMaxVel[0];
+                                    ROS_INFO("[BASE X] - COMPLETED, CHANGE VELOCITY - New X-Force by factor %.2f lower than previous standard force! Lowering maxVelocity to [%.2f, %.2f, %.2f]", 
+                                                percentFromOldMax, userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]);
+                            }
+                            break;
+                    case baseYLeft:
+                    case baseYRight:
+                            percentFromOldMax = userParametrized_maxFT_[1] / oldMaxFt[1];
+                            if ( percentFromOldMax < 1.0 ) {
+                                    userParametrized_maxVel_[1] = percentFromOldMax * oldMaxVel[1];
+                                    ROS_INFO("[BASE Y] - COMPLETED, CHANGE VELOCITY - New Y-Force by factor %.2f lower than previous standard force! Lowering maxVelocity to [%.2f, %.2f, %.2f]", 
+                                                percentFromOldMax, userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]);
+                            }
+                            break;
+                    case baseRotLeft:
+                    case baseRotRight:
+                            percentFromOldMax = userParametrized_maxFT_[2] / oldMaxFt[2];
+                            if ( percentFromOldMax < 1.0 ) {
+                                    userParametrized_maxVel_[2] = percentFromOldMax * oldMaxVel[2];
+                                    ROS_INFO("[BASE ROT] - COMPLETED, CHANGE VELOCITY - New Torque by factor %.2f lower than previous standard torque! Lowering maxVelocity to [%.2f, %.2f, %.2f]", 
+                                                percentFromOldMax, userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]);
+                            }
+                            break;
+            }
+            baseForce_testCompleted_ = true;
+            return zeroForce_;
+    }//Phase completed
 }
 
 /**
@@ -892,30 +944,30 @@ std::array<double, 3> FTSAdaptiveForceController::scaleBetweenValues( std::array
  */
 void FTSAdaptiveForceController::updateTravelledDistance() {
         
-        double timeSinceLastUpdate = (current_loop_time_ - lastDistanceUpdate_).toSec();
-        if (timeSinceLastUpdate > 0.0) { //update travelledDistance
-                double newDistance = travelledDistance_;
-                switch (currentStep_) {
-                        case baseX:
-                        case recordFeetDistance:
-                        case adaptX:
-                                newDistance += getOldVelocity()[0] * timeSinceLastUpdate;
-                                break;
-                        case baseYLeft:
-                                newDistance += getOldVelocity()[1] * timeSinceLastUpdate;
-                                break;
-                        case baseYRight:
-                                newDistance += -1.0 * getOldVelocity()[1] * timeSinceLastUpdate;
-                                break;
-                        case baseRotLeft:
-                                newDistance += getOldVelocity()[2] * timeSinceLastUpdate;
-                                break;
-                        case baseRotRight:
-                                newDistance += -1.0 * getOldVelocity()[2] * timeSinceLastUpdate;
-                }
-                travelledDistance_ = (newDistance > 0.0) ? newDistance : 0.0; 
-                lastDistanceUpdate_ = current_loop_time_;
+    double timeSinceLastUpdate = (current_loop_time_ - lastDistanceUpdate_).toSec();
+    if (timeSinceLastUpdate > 0.0) { //update travelledDistance
+        double newDistance = travelledDistance_;
+        switch (currentStep_) {
+            case baseX:
+            case recordFeetDistance:
+            case adaptX:
+                    newDistance += getOldVelocity()[0] * timeSinceLastUpdate;
+                    break;
+            case baseYLeft:
+                    newDistance += getOldVelocity()[1] * timeSinceLastUpdate;
+                    break;
+            case baseYRight:
+                    newDistance += -1.0 * getOldVelocity()[1] * timeSinceLastUpdate;
+                    break;
+            case baseRotLeft:
+                    newDistance += getOldVelocity()[2] * timeSinceLastUpdate;
+                    break;
+            case baseRotRight:
+                    newDistance += -1.0 * getOldVelocity()[2] * timeSinceLastUpdate;
         }
+        travelledDistance_ = (newDistance > 0.0) ? newDistance : 0.0; 
+        lastDistanceUpdate_ = current_loop_time_;
+    }
 }
 
 /**
@@ -976,42 +1028,42 @@ void FTSAdaptiveForceController::switchParametrizationStep(){
         
         step_finished_time_ = current_loop_time_;
         switch(currentStep_) {
-                case baseX:
-                        currentStep_ = baseYLeft;
-                        ROS_INFO("[PARAM STEP - baseYLeft activated! ]");
-                        break;
-                case baseYLeft:
-                        currentStep_ = baseYRight;
-                        ROS_INFO("[PARAM STEP - baseYRight activated! ]");
-                        break;
-                case baseYRight:
-                        currentStep_ = baseRotLeft;
-                        ROS_INFO("[PARAM STEP - baseRotLeft activated! ]");
-                        break;
-                case baseRotLeft:
-                        currentStep_ = baseRotRight;
-                        ROS_INFO("[PARAM STEP - baseRotRight activated! ]");
-                        break;
-                case baseRotRight:
-                        currentStep_ = finished;
-                        ROS_INFO("[PARAM STEP - Base force parametrization finished! ]");
-                        break;
-                case recordFeetDistance:
-                        currentStep_ = adaptX;
-                        ROS_WARN("[PARAM STEP - Feet Distance Recording finished! ]");
-                        break;
-                case adaptX:
-                        currentStep_ = finished;
-                        ROS_WARN("[PARAM STEP - Finalizing parametrization now!! ]");
-                        break;
-                case finished:
-                        currentStep_ = baseX;
-                        ROS_WARN("[PARAM STEP - Parametrization finished!! Activating all degrees of freedom and resetting parametrization! ]");
-                        setLEDPhase(unlocked);
-                        parametrization_active_ = false;
-                default: 
-                        ROS_WARN("[SWITCH STEP] No Valid Step defined!");
-                        return;
+            case baseX:
+                    currentStep_ = baseYLeft;
+                    ROS_INFO("[PARAM STEP - baseYLeft activated! ]");
+                    break;
+            case baseYLeft:
+                    currentStep_ = baseYRight;
+                    ROS_INFO("[PARAM STEP - baseYRight activated! ]");
+                    break;
+            case baseYRight:
+                    currentStep_ = baseRotLeft;
+                    ROS_INFO("[PARAM STEP - baseRotLeft activated! ]");
+                    break;
+            case baseRotLeft:
+                    currentStep_ = baseRotRight;
+                    ROS_INFO("[PARAM STEP - baseRotRight activated! ]");
+                    break;
+            case baseRotRight:
+                    currentStep_ = finished;
+                    ROS_INFO("[PARAM STEP - Base force parametrization finished! ]");
+                    break;
+            case recordFeetDistance:
+                    currentStep_ = adaptX;
+                    ROS_WARN("[PARAM STEP - Feet Distance Recording finished! ]");
+                    break;
+            case adaptX:
+                    currentStep_ = finished;
+                    ROS_WARN("[PARAM STEP - Finalizing parametrization now!! ]");
+                    break;
+            case finished:
+                    currentStep_ = baseX;
+                    ROS_WARN("[PARAM STEP - Parametrization finished!! Activating all degrees of freedom and resetting parametrization! ]");
+                    setLEDPhase(unlocked);
+                    parametrization_active_ = false;
+            default: 
+                    ROS_WARN("[SWITCH STEP] No Valid Step defined!");
+                    return;
         }
         resetTravelledDistance();
         stepInitialized_ = false;

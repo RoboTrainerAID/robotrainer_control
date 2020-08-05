@@ -57,6 +57,8 @@ class RoboTrainerRearConfigurationStatePublisher():
         self.get_service = rospy.Service("get_state", GetRearWheelsState, self.get_rear_wheel_state)
 
         self.update_controller_srv = rospy.ServiceProxy("/base/update_kinematics", Trigger);
+        self.update_odometry_controller_srv = rospy.ServiceProxy("/base/odometry_controller/update_kinematics", Trigger);
+        self.update_twist_controller_srv = rospy.ServiceProxy("/base/twist_controller/update_kinematics", Trigger);
 
         self.read_set_default_wheel_parameters();
 
@@ -91,12 +93,29 @@ class RoboTrainerRearConfigurationStatePublisher():
             self.current_state["angular"] = req.angular_key
             self.current_state["linear"] = req.linear_key
             self.set_wheel_parameters();
+            srv_ret = False
             try:
                 if self.update_controller_srv():
                     res.success = True
+                    srv_ret = True
                 else:
+                    srv_ret = False
                     res.success = False
-                    res.message = "The kinematics failed to be updated!"
+                    res.message = "The kinematics on fts_controller failed to be updated!"
+                    rospy.logerr(res.message)
+                #if self.update_twist_controller_srv():
+                    #res.success = True
+                #else:
+                    #res.success = False
+                    #res.message = "The kinematics on twist_controller failed to be updated!"
+                    #rospy.logerr(res.message)
+                if self.update_odometry_controller_srv():
+                    res.success = True
+                    srv_ret = True
+                else:
+                    srv_ret = False
+                    res.success = False
+                    res.message = "The kinematics on odometry_controller failed to be updated!"
                     rospy.logerr(res.message)
             except rospy.ServiceException, e:
                 res.success = False

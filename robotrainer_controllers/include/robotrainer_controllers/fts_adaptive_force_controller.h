@@ -92,6 +92,14 @@ namespace robotrainer_controllers {
                 bool baseForce_testCompleted_;                
                 bool baseForce_fts_offset_reset_;
                 
+                bool autonomously_returning_ = false;
+                double autonomously_needed_time_sec_;
+                ros::Time autonomously_start_time_;
+                ros::Duration autonomously_traveled_time_;
+                // not constant, just for reserving memory on initializaton
+                double autonomously_returning_velocity;
+                
+                
                 double travelledDistance_;
                 ros::Time lastDistanceUpdate_;
                 

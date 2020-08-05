@@ -29,5 +29,17 @@
                         This controller can be used to compare different integrals.
                 </description>
         </class>
+        
+        <class name="robotrainer_controllers/OdometryController" type="robotrainer_controllers::OdometryController" base_class_type="controller_interface::ControllerBase">
+                <description>
+                        This controller publish odometry data for RoboTrainer depending on its kinematic status.
+                </description>
+        </class>
+        
+        <class name="robotrainer_controllers/TwistController" type="robotrainer_controllers::WheelController" base_class_type="controller_interface::ControllerBase">
+                <description>
+                        Twist controller for RoboTrainer depending on its kinematic status.
+                </description>
+        </class>
 
 </library>

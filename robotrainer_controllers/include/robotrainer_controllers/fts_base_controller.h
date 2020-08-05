@@ -244,7 +244,7 @@ namespace robotrainer_controllers {
                 std::array<double, 3> a1_; //in order [x], [y], [torque]
                 std::array<double, 3> b1_; //in order [x], [y], [torque]
 
-//                 boost::mutex mutex_;
+                boost::mutex controller_update_control_mutex_;
 
                 //input for used for controlling in update()
                 std::array<double,3> force_input_;
@@ -273,8 +273,10 @@ namespace robotrainer_controllers {
                 void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
 
                 //controller functions
-                void resetController(void);
                 void stopController(void);               
+                void restartController(void);               
+                void resetController(void);
+                void resetControllerNew(void);
                 
                 
                 void discretizeController();
@@ -306,6 +308,7 @@ namespace robotrainer_controllers {
                 void setMaxVel(std::array<double,3> max_vel_for_control);
                 void setMaxFt(std::array<double,3> max_ft_for_control);
                 void setActiveDimensions(std::array<bool, 3> enable_controller_dimension);
+                std::string setUseTwistInput(bool use_twist_input);
                 
                 //helper functions
                 geometry_msgs::Vector3 convertToMessage(std::array<double, 3> input);

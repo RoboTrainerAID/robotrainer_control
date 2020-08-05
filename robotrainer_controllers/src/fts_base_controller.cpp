@@ -125,7 +125,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
  * \brief start controller 
  */
 void FTSBaseController::starting(const ros::Time& time) {
-    resetController();
+    restartController();
     WheelControllerBase::starting(time);
 }
 
@@ -153,6 +153,8 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     
     std::array<double, 3> new_vel;
     bool set_new_commands = true;
+    
+    boost::mutex::scoped_lock controller_update_control_lock(controller_update_control_mutex_);
 
     if (running_ and not use_twist_input_) {
             if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
@@ -253,7 +255,6 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     }
     
     if (set_new_commands) {
-        boost::mutex::scoped_lock lock(mutex_);
         if (std::isnan(new_vel[0]) || std::isnan(new_vel[1]) || std::isnan(new_vel[2])) {
             ROS_FATAL("Received NaN-value in Twist message. Reset target to zero.");
             target_.state = PlatformState();
@@ -276,7 +277,6 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         steer_joints_[i].setCommand(wheel_commands_[i].dVelGearSteerRadS);
         drive_joints_[i].setCommand(wheel_commands_[i].dVelGearDriveRadS);
     }
-
 }
 
 
@@ -285,8 +285,13 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
  * \brief Stops the controller
  */
 void FTSBaseController::stopController() {
+    boost::mutex::scoped_try_lock lock(controller_update_control_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
     can_be_running_ = false;
     running_ = false;
+    ROS_INFO("Controller is running again.");
 }
 
 /**
@@ -299,20 +304,26 @@ void FTSBaseController::stopping(const ros::Time& /*time*/) {
 /**
 * \brief Resets the controller by setting old force and velocities to zero and re-discretizing the pt1-element parameters
 */
+void FTSBaseController::restartController() {
+    discretizeController();
+    // initialize variables
+    force_old_[0] = 0.0;
+    force_old_[1] = 0.0;
+    force_old_[2] = 0.0;
+    velocity_old_[0] = 0.0;
+    velocity_old_[1] = 0.0;
+    velocity_old_[2] = 0.0;
+    can_be_running_ = true;
+}
+
 void FTSBaseController::resetController() {
-        
-        ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Reset (SIM OFF)");
-        ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Reset (SIM ON)!");
-        
-        discretizeController();
-        // initialize variables
-        force_old_[0] = 0.0;
-        force_old_[1] = 0.0;
-        force_old_[2] = 0.0;
-        velocity_old_[0] = 0.0;
-        velocity_old_[1] = 0.0;
-        velocity_old_[2] = 0.0;
-        can_be_running_ = true;
+    restartController();
+}
+
+//TODO: Temp function should be renamed to resetController, when all child classes are clarified
+void FTSBaseController::resetControllerNew() {
+    stopController();
+    restartController();
 }
 
 
@@ -493,16 +504,9 @@ bool FTSBaseController::setUseTwistInputCallback(std_srvs::Trigger::Request &req
     ROS_DEBUG("Called service to set twist input on/off");
     
     resp.success = true;
-    use_twist_input_ = not use_twist_input_;
-    if (use_twist_input_) {
-        resp.message = "RoboTrainer Controller uses _twist_ input!";
-    } else {
-        resp.message = "RoboTrainer Controller uses _force_ input!";
-    }
+    resp.message = setUseTwistInput(!use_twist_input_);
     
-    ROS_INFO(resp.message.c_str());
-    
-    resetController();
+    restartController();
 
     return true;
 }
@@ -517,7 +521,7 @@ bool FTSBaseController::updateWheelParamsCallback(std_srvs::Trigger::Request &re
     resp.success &= GeomController<UndercarriageCtrl>::update(wheel_params_);
     ROS_INFO("Kinematics sucessfully updated!");
     
-    resetController();
+    restartController();
 
     return true;
 }
@@ -690,6 +694,8 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
         
         no_hw_output_ = config.no_hw_output;
+        ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot will not move");
+        ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Simulation ON - Robot will move!!!");
         use_twist_input_ = config.use_twist_input;
         ROS_INFO_COND(use_twist_input_, "RoboTrainer controller now using _twist_ input");
 
@@ -773,7 +779,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         
         base_reconfigured_flag_ = true;
         
-        resetController();
+        restartController();
 }
 
 
@@ -962,16 +968,14 @@ std::array<double, 3> FTSBaseController::getMaxVel() {
  * \brief Returns whether the user is gripping or not.
  */
 bool FTSBaseController::userIsGripping() {
-        
-        return userIsGripping_;
+    return userIsGripping_;
 }
 
 /**
  * \brief Returns whether the robot is moving forward or not (if x-value is >0).
  */
 bool FTSBaseController::robotIsMovingForward() {
-        
-        return (velocity_old_[0] > -0.00001);
+    return (velocity_old_[0] > -0.00001);
 }
         
         
@@ -1013,6 +1017,23 @@ void FTSBaseController::setActiveDimensions(std::array<bool, 3> enable_controlle
         use_controller_[2] = enable_controller_dimension[2];
 }
 
+
+std::string FTSBaseController::setUseTwistInput(bool use_twist_input) {
+    boost::mutex::scoped_try_lock lock(controller_update_control_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    use_twist_input_ = use_twist_input;
+    
+    std::string message = "RoboTrainer Controller uses _force_ input!";
+    if (use_twist_input_) {
+        std::string message = "RoboTrainer Controller uses _twist_ input!";
+    }
+   
+    ROS_INFO(message.c_str());
+    
+    return message;
+}
 
 /**
  * \brief This function calls the "recalculateFTSOffset" service of the FTS interface. It is needed whenever the FTS is pressed to limit, because is can possibly mess up the previous offset. It is a necessary step while doing the maximum force parametrization, because it is possible that the user pushes the robot very strong against the virtual spring. 

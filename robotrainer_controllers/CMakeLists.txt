@@ -79,7 +79,9 @@ add_library(${PROJECT_NAME}
   src/fts_base_controller.cpp
   src/fts_adaptive_force_controller.cpp
   src/integral_compare_ctrl.cpp
+  src/odometry_controller.cpp
   src/passive_behavior_controller.cpp
+  src/twist_controller.cpp
 )
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg  ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

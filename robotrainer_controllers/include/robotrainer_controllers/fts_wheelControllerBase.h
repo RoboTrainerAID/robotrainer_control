@@ -133,7 +133,7 @@ protected:
         } else {
             twist_command_.linear.x = msg->linear.x;
             twist_command_.linear.y = msg->linear.y;
-            twist_command_.angular.z = msg->linear.z;
+            twist_command_.angular.z = msg->angular.z;
         }
     }
 

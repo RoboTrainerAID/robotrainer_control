@@ -14,11 +14,10 @@ template<typename HandleType, typename Controller> class GeomControllerBase {
 protected:
     std::vector<HandleType> steer_joints_;
     std::vector<HandleType> drive_joints_;
-    boost::scoped_ptr<Controller> geom_;
     std::vector<WheelState> wheel_states_;
+    boost::scoped_ptr<Controller> geom_;
 
 public:
-
     void updateState(){
 
         for (unsigned i=0; i<wheel_states_.size(); i++){
@@ -29,9 +28,6 @@ public:
         geom_->updateWheelStates(wheel_states_);
     }
 
-//     void writeCommand(){
-//
-//     }
 protected:
     bool setup(const std::vector<typename Controller::WheelParams> &wheel_params){
         if (wheel_params.size() < 3){
@@ -51,13 +47,34 @@ template<typename Controller> class GeomController:
         public controller_interface::MultiInterfaceController<hardware_interface::VelocityJointInterface, hardware_interface::ForceTorqueSensorInterface> {
 public:
     typedef std::vector<typename Controller::WheelParams> wheel_params_t;
-    // TODO: This function can be commented out?
-//     bool init(hardware_interface::VelocityJointInterface* hw, ros::NodeHandle& controller_nh){
-//         std::vector<typename Controller::WheelParams> wheel_params;
-//         if(!parseWheelParams(wheel_params, controller_nh)) return false;
-//         return init(hw, wheel_params);
-//     }
     bool init(hardware_interface::VelocityJointInterface* hw, const wheel_params_t & wheel_params){
+        if(!this->setup(wheel_params)) return false;
+        try{
+            // TODO: Check if there are already handles there and than skip this step
+            for (unsigned i=0; i<wheel_params.size(); i++){
+                this->steer_joints_.push_back(hw->getHandle(wheel_params[i].geom.steer_name));
+                this->drive_joints_.push_back(hw->getHandle(wheel_params[i].geom.drive_name));
+            }
+        }
+        catch(const std::exception &e){
+            ROS_ERROR_STREAM("Error while attaching handles: " << e.what());
+            return false;
+        }
+        return true;
+    }
+
+    bool update(const wheel_params_t & wheel_params) {
+        if(!this->setup(wheel_params)) return false;
+        return true;
+    }
+};
+
+template<typename Interface, typename Controller> class OdomGeomController:
+    public GeomControllerBase<typename Interface::ResourceHandleType, Controller>,
+        public controller_interface::Controller<Interface> {
+public:
+    typedef std::vector<typename Controller::WheelParams> wheel_params_t;
+    bool init(Interface* hw, const wheel_params_t & wheel_params){
         if(!this->setup(wheel_params)) return false;
         try{
             // TODO: Check if there are already handles there and than skip this step
