@@ -94,38 +94,41 @@ class RoboTrainerRearConfigurationStatePublisher():
             self.current_state["linear"] = req.linear_key
             self.set_wheel_parameters();
             srv_ret = False
-            try:
-                if self.update_controller_srv():
-                    res.success = True
-                    srv_ret = True
-                else:
-                    srv_ret = False
+            if (not req.without_controller_updates):
+                try:
+                    if self.update_controller_srv():
+                        res.success = True
+                        srv_ret = True
+                    else:
+                        srv_ret = False
+                        res.success = False
+                        res.message = "The kinematics on fts_controller failed to be updated!"
+                        rospy.logerr(res.message)
+                    #if self.update_twist_controller_srv():
+                        #res.success = True
+                    #else:
+                        #res.success = False
+                        #res.message = "The kinematics on twist_controller failed to be updated!"
+                        #rospy.logerr(res.message)
+                    if self.update_odometry_controller_srv():
+                        res.success = True
+                        srv_ret = True
+                    else:
+                        srv_ret = False
+                        res.success = False
+                        res.message = "The kinematics on odometry_controller failed to be updated!"
+                        rospy.logerr(res.message)
+                except rospy.ServiceException, e:
                     res.success = False
-                    res.message = "The kinematics on fts_controller failed to be updated!"
+                    res.message = "The kinematics update service call failed!"
                     rospy.logerr(res.message)
-                #if self.update_twist_controller_srv():
-                    #res.success = True
-                #else:
-                    #res.success = False
-                    #res.message = "The kinematics on twist_controller failed to be updated!"
-                    #rospy.logerr(res.message)
-                if self.update_odometry_controller_srv():
-                    res.success = True
-                    srv_ret = True
-                else:
-                    srv_ret = False
-                    res.success = False
-                    res.message = "The kinematics on odometry_controller failed to be updated!"
-                    rospy.logerr(res.message)
-            except rospy.ServiceException, e:
-                res.success = False
-                res.message = "The kinematics update service call failed!"
-                rospy.logerr(res.message)
 
-            # Return values to old ones if controller call not succeeded
-            if not res.success:
-                self.current_state = old_state.copy()
-                self.set_wheel_parameters()
+                # Return values to old ones if controller call not succeeded
+                if not res.success:
+                    self.current_state = old_state.copy()
+                    self.set_wheel_parameters()
+            else:
+                res.message = "The controllers update services are not called as requested! If the controllers are running call them manually!"
 
         res.angular = str(self.current_state["angular"]) + " - " + STATES_ANGULAR[self.current_state["angular"]][1]
         res.linear = str(self.current_state["linear"]) + " - " + STATES_LINEAR[self.current_state["linear"]][1]
