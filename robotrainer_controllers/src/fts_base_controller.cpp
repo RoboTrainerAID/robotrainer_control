@@ -128,6 +128,7 @@ void FTSBaseController::starting(const ros::Time& time) {
     WheelControllerBase::starting(time);
     restartControllerAndOrientWheels(std::array<double, 3>({1, 0, 0}));
     last_controller_time_base_ = time;
+    controller_started_ = true;
 }
 
 /**
@@ -158,8 +159,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     bool set_new_commands = true;
     bool running = getRunning();
 
-    boost::mutex::scoped_lock controller_update_control_lock(controller_update_control_mutex_);
-
+    boost::mutex::scoped_lock controller_internal_states_lock(controller_internal_states_mutex_);
 
     if (running and not use_twist_input_) {
         if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
@@ -281,7 +281,87 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     }
 }
 
+/**
+ * \brief Stops the controller
+ */
+void FTSBaseController::stopping(const ros::Time& /*time*/) {
+    stopController();
+    controller_started_ = false;
+}
 
+/**
+* \brief Resets the controller by setting old force and velocities to zero and re-discretizing the pt1-element parameters
+*/
+void FTSBaseController::restartController()
+{
+    double lock = (ros::Time::now() - ros::Duration(299*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
+    protectedToggleControllerRunning(true, lock);
+
+}
+
+void FTSBaseController::resetController()
+{
+    double lock = (ros::Time::now() - ros::Duration(306*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
+    setOrientWheels({1, 0, 0});
+//     bool ret = unsafeRecalculateFTSOffsets();
+//     protectedToggleControllerRunning(ret, lock);
+    protectedToggleControllerRunning(true, lock);
+}
+
+//TODO: Temp function should be renamed to resetController, when all child classes are clarified
+void FTSBaseController::resetControllerNew()
+{
+    double lock = (ros::Time::now() - ros::Duration(311*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
+    protectedToggleControllerRunning(true, lock);
+
+}
+
+void FTSBaseController::restartControllerAndOrientWheels(std::array<double,3> direction)
+{
+    double lock = (ros::Time::now() - ros::Duration(323*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
+    setOrientWheels(direction);
+    protectedToggleControllerRunning(true, lock);
+}
+
+std::string FTSBaseController::setUseTwistInput(bool use_twist_input)
+{
+    double lock = (ros::Time::now() - ros::Duration(331*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
+    std::string message = internalSetUseTwistInput(use_twist_input);
+    protectedToggleControllerRunning(true, lock);
+    return message;
+}
+
+/* ______CONTROLLER RUNNING CONTROL_______*/
+void FTSBaseController::protectedToggleControllerRunning(const bool value, const double locking_number)
+{
+    if (!controller_started_) {
+        return;
+    }
+    boost::mutex::scoped_lock lock(locking_mutex_);
+    if (!value && locking_number_ == -1) { // stop controller and lock
+        stopController();
+        locking_number_ = locking_number;
+        ROS_INFO("Running Control: Locking nr: '%f'", locking_number);
+    } else if(!value && locking_number_ == locking_number) { // unlock without starting when a issue happens
+        stopController();
+        locking_number_ = -1;
+        ROS_ERROR("Running Control: Releasing without starting controller! An issue happend, check it an restart controller manually! Releasing nr: '%f'", locking_number);
+    } else if (value && locking_number_ == locking_number) { // start controller and unlock
+        startController();
+        locking_number_ = -1;
+        ROS_INFO("Running Control: Releasing nr: '%f'", locking_number);
+    }
+    else if (value && locking_number_ == -1) {
+        ROS_FATAL("Trying to unlock not locked toggle!");
+    } else if (locking_number_ != locking_number) {
+        ROS_FATAL("Access denied: Controller Toggle is locked!");
+    }
+}
 
 /**
  * \brief Stops the controller
@@ -292,22 +372,8 @@ void FTSBaseController::stopController()
     setRunning(false);
 }
 
-/**
- * \brief Stops the controller
- */
-void FTSBaseController::stopping(const ros::Time& /*time*/) {
-    stopController();
-//     controller_started_ = false;
-}
-
-/**
-* \brief Resets the controller by setting old force and velocities to zero and re-discretizing the pt1-element parameters
-*/
-void FTSBaseController::restartController() {
-    boost::mutex::scoped_try_lock lock(controller_update_control_mutex_);
-    while (!lock) {
-        lock.try_lock();
-    }
+void FTSBaseController::startController()
+{
     discretizeController();
     // initialize variables
     force_old_[0] = 0.0;
@@ -319,19 +385,9 @@ void FTSBaseController::restartController() {
     setCanBeRunning(true);
 }
 
-void FTSBaseController::resetController() {
-    restartController();
-}
-
-//TODO: Temp function should be renamed to resetController, when all child classes are clarified
-void FTSBaseController::resetControllerNew() {
-    stopController();
-    restartController();
-}
-
-void FTSBaseController::restartControllerAndOrientWheels(std::array<double,3> direction)
-{
-    boost::mutex::scoped_try_lock lock(controller_update_control_mutex_);
+/* ______CONTROLLER INTERNALS________ - Controller has to be stoped before calling this functions! */
+void FTSBaseController::setOrientWheels(std::array<double,3> direction) {
+    boost::mutex::scoped_try_lock lock(controller_internal_states_mutex_);
     while (!lock) {
         lock.try_lock();
     }
@@ -339,8 +395,68 @@ void FTSBaseController::restartControllerAndOrientWheels(std::array<double,3> di
         orient_wheels_vel_[i] = direction[i] * 0.001;
     }
     orient_wheels_ = 1;
-    lock.unlock();
-    restartController();
+}
+
+bool FTSBaseController::unsafeRecalculateFTSOffsets()
+{
+    force_torque_sensor::CalculateSensorOffset srv;
+    srv.request.apply_after_calculation = true;
+
+    if (fts_client_.call(srv)) {
+        ROS_DEBUG("Called FTS with CalculateOffsets, retrieved new offset as force:[%.4f, %.4f, %.4f] torque:[%.4f, %.4f, %.4f]",
+                  srv.response.offset.force.x, srv.response.offset.force.y, srv.response.offset.force.z, srv.response.offset.torque.x, srv.response.offset.torque.y, srv.response.offset.torque.z);
+        return true;
+    } else {
+        ROS_ERROR("Failed to call Service to recalculate FTSOffsets!");
+        return false;
+    }
+}
+
+std::string FTSBaseController::internalSetUseTwistInput(bool use_twist_input) {
+    boost::mutex::scoped_try_lock lock(controller_internal_states_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    use_twist_input_ = use_twist_input;
+
+    std::string message = "RoboTrainer Controller uses _force_ input!";
+    if (use_twist_input_) {
+        std::string message = "RoboTrainer Controller uses _twist_ input!";
+    }
+    ROS_DEBUG("%s", message.c_str());
+    return message;
+}
+
+/*_____PROTECTED GETTERS AND SETTERS_____*/
+
+void FTSBaseController::setRunning(bool value)
+{
+    boost::unique_lock<boost::shared_mutex> lock(running_mutex_);
+    running_ = value;
+}
+
+bool FTSBaseController::getRunning()
+{
+    boost::shared_lock<boost::shared_mutex> lock(running_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    return running_;
+}
+
+void FTSBaseController::setCanBeRunning(bool value)
+{
+    boost::unique_lock<boost::shared_mutex> lock(can_be_running_mutex_);
+    can_be_running_ = value;
+}
+
+bool FTSBaseController::getCanBeRunning()
+{
+    boost::shared_lock<boost::shared_mutex> lock(can_be_running_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    return can_be_running_;
 }
 
 
@@ -705,31 +821,35 @@ void FTSBaseController::discretizeWithNewParameters( std::array<double,3> time_c
 */
 void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level) {
 
+    if (!controller_started_) {
+        return;
+    }
     // First check if anything changed, if not go out an do not stop controller
-    bool needs_stoppping = config.reset_controller || config.recalculate_FTS_offsets ||
+    bool needs_processing = config.reset_controller || config.recalculate_FTS_offsets ||
             no_hw_output_ != config.no_hw_output || use_twist_input_ != config.use_twist_input ||
             config.apply_base_controller_params || config.apply_control_actions;
-    if (!needs_stoppping) {
+    if (!needs_processing) {
         return;
     }
 
-    stopController();
     ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
 
     if (config.reset_controller) {
-        ROS_INFO("[FTS_Base]: Resetting controller.");
+        ROS_DEBUG("[FTS_Base]: Called reset controller.");
         config.reset_controller = false;
-        restartControllerAndOrientWheels({1, 0, 0});
+        resetController();
         return;
     }
 
     if (config.recalculate_FTS_offsets) {
-        ROS_DEBUG("[FTS_Base]: recalculate offsets.");
+        ROS_DEBUG("[FTS_Base]: Called recalculate offse.");
         config.recalculate_FTS_offsets = false;
         recalculateFTSOffsets();
-        restartController();
         return;
     }
+
+    double lock = (ros::Time::now() - ros::Duration(845*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
 
     if (no_hw_output_ != config.no_hw_output) {
         no_hw_output_ = config.no_hw_output;
@@ -739,7 +859,6 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     if (use_twist_input_ != config.use_twist_input) {
         setUseTwistInput(config.use_twist_input);
     }
-
 
     if (config.apply_base_controller_params) {
             ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
@@ -821,7 +940,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
 
     base_reconfigured_flag_ = true;
 
-    restartController();
+    protectedToggleControllerRunning(true, lock);
 }
 
 
@@ -1075,76 +1194,19 @@ void FTSBaseController::setActiveDimensions(std::array<bool, 3> enable_controlle
         use_controller_[2] = enable_controller_dimension[2];
 }
 
-
-std::string FTSBaseController::setUseTwistInput(bool use_twist_input) {
-    boost::mutex::scoped_try_lock lock(controller_update_control_mutex_);
-    while (!lock) {
-        lock.try_lock();
-    }
-    use_twist_input_ = use_twist_input;
-
-    std::string message = "RoboTrainer Controller uses _force_ input!";
-    if (use_twist_input_) {
-        std::string message = "RoboTrainer Controller uses _twist_ input!";
-    }
-    ROS_DEBUG("%s", message.c_str());
-    return message;
-}
-
 /**
  * \brief This function calls the "recalculateFTSOffset" service of the FTS interface. It is needed whenever the FTS is pressed to limit, because is can possibly mess up the previous offset. It is a necessary step while doing the maximum force parametrization, because it is possible that the user pushes the robot very strong against the virtual spring.
  */
-bool FTSBaseController::recalculateFTSOffsets() {
-
-    stopController();
-
-    force_torque_sensor::CalculateSensorOffset srv;
-    srv.request.apply_after_calculation = true;
-    geometry_msgs::Wrench resultingOffset;
-
-    if (fts_client_.call(srv)) {
-        resultingOffset = srv.response.offset;
-        ROS_DEBUG("Called FTS with CalculateOffsets, retrieved new offset as force:[%.4f, %.4f, %.4f] torque:[%.4f, %.4f, %.4f]",
-            resultingOffset.force.x, resultingOffset.force.y, resultingOffset.force.z, resultingOffset.torque.x, resultingOffset.torque.y, resultingOffset.torque.z);
-        restartController();
-        return true;
-    } else {
-        ROS_ERROR("Failed to call Service to recalculate FTSOffsets!");
-        return false;
-    }
-
-}
-
-/*_____PROTECTED GETTERS AND SETTERS_____*/
-
-void FTSBaseController::setRunning(bool value)
+bool FTSBaseController::recalculateFTSOffsets()
 {
-    boost::unique_lock<boost::shared_mutex> lock(running_mutex_);
-    running_ = value;
-}
 
-bool FTSBaseController::getRunning()
-{
-    boost::shared_lock<boost::shared_mutex> lock(running_mutex_);
-    while (!lock) {
-        lock.try_lock();
-    }
-    return running_;
-}
+    double lock = (ros::Time::now() - ros::Duration(1163*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
 
-void FTSBaseController::setCanBeRunning(bool value)
-{
-    boost::unique_lock<boost::shared_mutex> lock(can_be_running_mutex_);
-    can_be_running_ = value;
-}
+    bool ret = unsafeRecalculateFTSOffsets();
 
-bool FTSBaseController::getCanBeRunning()
-{
-    boost::shared_lock<boost::shared_mutex> lock(can_be_running_mutex_);
-    while (!lock) {
-        lock.try_lock();
-    }
-    return can_be_running_;
+    protectedToggleControllerRunning(ret, lock);
+    return ret;
 }
 
 /*_____HELPER FUNCTIONS_____*/
