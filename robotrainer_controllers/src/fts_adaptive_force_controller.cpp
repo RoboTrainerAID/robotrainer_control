@@ -8,6 +8,7 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
 
         if (!FTSBaseController::init(robot_hw, root_nh, controller_nh)) { // init base controller if yet not initialized
                 ROS_FATAL("Initializing FTSBaseController went wrong... Can not continue...");
+                return false;
         }
         ROS_INFO("Init FTSAdaptiveForceController!");
         setBaseValues();
@@ -1285,8 +1286,12 @@ void FTSAdaptiveForceController::sendDebugTopicsParamAdaptX( double currentScale
  */
 void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FTSAdaptiveForceControllerConfig &config, uint32_t level) {
 
-    use_passive_behavior_ctrlr_ = config.use_passive_behavior_ctrlr;
-    ROS_INFO_COND(use_passive_behavior_ctrlr_, "[ADAPT] - Enabling passive behavior control!");
+    if (use_passive_behavior_ctrlr_ != config.use_passive_behavior_ctrlr) {
+        use_passive_behavior_ctrlr_ = config.use_passive_behavior_ctrlr;
+        ROS_INFO_COND(use_passive_behavior_ctrlr_, "[ADAPT] - Enabling passive behavior control!");
+        ROS_INFO_COND(!use_passive_behavior_ctrlr_, "[ADAPT] - Disabling passive behavior control!");
+    }
+
     adaption_is_active_ = config.use_velocity_adaptive_force;
 
     //switch between standard ft/velocity values and user-parametrized values
@@ -1304,7 +1309,7 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
 
     //parametrization reconfigure part
     if (config.enable_parametrization_changes) {
-            config.groups.user_parametrization_functionalities.state = true;
+        config.groups.user_parametrization_functionalities.state = true;
 
         if (!parametrization_active_) { //enable change of parametrization parameters
             ROS_INFO("[ADAPT - Parametrization]: Updating parametrization parameters.");
@@ -1320,23 +1325,26 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
         if (!parametrization_active_ && config.activate_force_parametrization) {
             ROS_INFO("[ADAPT - Parametrization] - Activating User Force Parametrization.");
             parametrization_active_ = true;
+            config.parameterization_activated = true;
             currentStep_ = baseX;
-            // TODO: add function to reset paramterization variables
             setSwitchStepRequested(false);
             stepInitialized_ = false;
         } else if (!parametrization_active_ && config.activate_adaptive_scale_parametrization) {
             ROS_INFO("[ADAPT - Parametrization]  - Activating Adaptive Scale parametrization.");
             parametrization_active_ = true;
+            config.parameterization_activated = true;
             currentStep_ = recordFeetDistance;
             stepInitialized_ = false;
             setSwitchStepRequested(false);
-        } else if ( (parametrization_active_ && !config.activate_force_parametrization) || (parametrization_active_ && !config.activate_adaptive_scale_parametrization) ) {
+        } else if (parametrization_active_ && !config.parameterization_activated) {
             currentStep_ = finished;
             stepInitialized_ = false;
             setSwitchStepRequested(false);
         }
+        config.activate_force_parametrization = false;
+        config.activate_adaptive_scale_parametrization = false;
     } else {
-            config.groups.user_parametrization_functionalities.state = false;
+        config.groups.user_parametrization_functionalities.state = false;
     }
 
     //velocity adaptive feature reconfigure part

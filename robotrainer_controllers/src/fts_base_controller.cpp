@@ -127,6 +127,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 void FTSBaseController::starting(const ros::Time& time) {
     WheelControllerBase::starting(time);
     restartControllerAndOrientWheels(std::array<double, 3>({1, 0, 0}));
+    last_controller_time_base_ = time;
 }
 
 /**
@@ -153,10 +154,14 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
 
     std::array<double, 3> new_vel;
     bool set_new_commands = true;
+    bool running = getRunning();
 
     boost::mutex::scoped_lock controller_update_control_lock(controller_update_control_mutex_);
 
-    if (running_ and not use_twist_input_) {
+    ROS_WARN_THROTTLE(1, "Base Controller time period between updates is: %f", (time-last_controller_time_base_).toSec());
+    last_controller_time_base_ = time;
+
+    if (running and not use_twist_input_) {
         if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
 
 //                 TODO: This should go into a modality
@@ -222,21 +227,21 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
 
     } else {
         set_new_commands = false;
-        if (not platform_is_moving_ and can_be_running_ and not userIsGripping()) {
+        if (!platform_is_moving_ and getCanBeRunning() and !userIsGripping()) {
             if (orient_wheels_ > 0 and orient_wheels_ < 100) {
                 ROS_DEBUG_ONCE("Orienting wheels with values: %f, %f, %f", orient_wheels_vel_[0], orient_wheels_vel_[1], orient_wheels_vel_[2]);
                 new_vel = orient_wheels_vel_;
                 set_new_commands = true;
                 orient_wheels_++;
-            } else if (!running_) {
-                running_ = true;
+            } else if (!running) {
+                setRunning(true);
                 orient_wheels_ = 0;
                 ROS_DEBUG("FTSBaseController is running!");
             }
         }
     }
 
-    if (platform_is_moving_ and (not userIsGripping() || not running_ || no_hw_output_) ) {
+    if (platform_is_moving_ and (!userIsGripping() || !running || no_hw_output_) ) {
         for (int i = 0; i < 3; i++) {
             new_vel[i] = 0.0;
             force_old_[i] = 0.0;
@@ -245,7 +250,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         set_new_commands = true;
     }
 
-    if ((running_ and orient_wheels_ == 0) and use_twist_input_) {
+    if ((running and orient_wheels_ == 0) and use_twist_input_) {
         boost::mutex::scoped_lock lock(twist_mutex_);
         new_vel[0] = twist_command_.linear.x;
         new_vel[1] = twist_command_.linear.y;
@@ -283,13 +288,10 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
 /**
  * \brief Stops the controller
  */
-void FTSBaseController::stopController() {
-    boost::mutex::scoped_try_lock lock(controller_update_control_mutex_);
-    while (!lock) {
-        lock.try_lock();
-    }
-    can_be_running_ = false;
-    running_ = false;
+void FTSBaseController::stopController()
+{
+    setCanBeRunning(false);
+    setRunning(false);
 }
 
 /**
@@ -297,6 +299,7 @@ void FTSBaseController::stopController() {
  */
 void FTSBaseController::stopping(const ros::Time& /*time*/) {
     stopController();
+//     controller_started_ = false;
 }
 
 /**
@@ -315,7 +318,7 @@ void FTSBaseController::restartController() {
     velocity_old_[0] = 0.0;
     velocity_old_[1] = 0.0;
     velocity_old_[2] = 0.0;
-    can_be_running_ = true;
+    setCanBeRunning(true);
 }
 
 void FTSBaseController::resetController() {
@@ -705,8 +708,23 @@ void FTSBaseController::discretizeWithNewParameters( std::array<double,3> time_c
 void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level) {
 
         stopController();
-
         ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
+
+        if (config.reset_controller) {
+
+            ROS_DEBUG("[FTS_Base]: Called reset controller.");
+            config.reset_controller = false;
+            restartControllerAndOrientWheels({1, 0, 0});
+            return;
+        }
+
+        if (config.recalculate_FTS_offsets) {
+            ROS_DEBUG("[FTS_Base]: Called recalculate offse.");
+            config.recalculate_FTS_offsets = false;
+            recalculateFTSOffsets();
+            restartController();
+            return;
+        }
 
         no_hw_output_ = config.no_hw_output;
         ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot will not move");
@@ -741,7 +759,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
                 time_const_[1] = config.y_time_const;
                 gain_[2] = config.rot_gain;
                 time_const_[2] = config.rot_time_const;
-                //untickDynamicReconfigureParam("apply_base_controller_params");
+                config.apply_base_controller_params = false;
         }
 
 
@@ -789,7 +807,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
                         cog_y_ = config.cog_y;
                         ROS_DEBUG("[ADAPT_CoG: ON] - Cog: (x:%.2f, y:%.2f)", cog_x_, cog_y_);
                 }
-                //untickDynamicReconfigureParam("apply_control_actions");
+                config.apply_control_actions = false;
         }
 
         base_reconfigured_flag_ = true;
@@ -1083,6 +1101,38 @@ bool FTSBaseController::recalculateFTSOffsets() {
         return false;
     }
 
+}
+
+/*_____PROTECTED GETTERS AND SETTERS_____*/
+
+void FTSBaseController::setRunning(bool value)
+{
+    boost::unique_lock<boost::shared_mutex> lock(running_mutex_);
+    running_ = value;
+}
+
+bool FTSBaseController::getRunning()
+{
+    boost::shared_lock<boost::shared_mutex> lock(running_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    return running_;
+}
+
+void FTSBaseController::setCanBeRunning(bool value)
+{
+    boost::unique_lock<boost::shared_mutex> lock(can_be_running_mutex_);
+    can_be_running_ = value;
+}
+
+bool FTSBaseController::getCanBeRunning()
+{
+    boost::shared_lock<boost::shared_mutex> lock(can_be_running_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    return can_be_running_;
 }
 
 /*_____HELPER FUNCTIONS_____*/

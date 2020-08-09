@@ -248,11 +248,7 @@ protected:
     wheel_params_t wheel_params_;
     ros::NodeHandle ctrl_nh_, wheel_ctrl_nh_;
 
-    bool running_;
-    bool can_be_running_;
     bool base_initialized_;
-    int orient_wheels_;
-    std::array<double, 3> orient_wheels_vel_;
 
     bool enableCounterForce_;
     //Controller active modi
@@ -377,14 +373,7 @@ protected:
 
     double delta_vel_;
 
-    //to detect no user gripping
-    // TODO: should be private
-    int noGripTicks_;
-    bool userIsGripping_;
-    ros::Time timeSinceReleasing_;
 
-    //for fts recalibration
-    ros::ServiceClient fts_client_;
 
 
     //debug LED
@@ -417,9 +406,9 @@ protected:
     std::array<double, 3> getGain();
     std::array<double, 3> getMaxFt();
     std::array<double, 3> getMaxVel();
-    bool robotIsMovingForward();
+    bool robotIsMovingForward(void);
 
-    bool recalculateFTSOffsets();
+    bool recalculateFTSOffsets(void);
 
     //setter functions
     void setForceInput(std::array<double,3> force_input_for_control);
@@ -433,7 +422,7 @@ protected:
     void untickDynamicReconfigureParam(std::string parameter_name);
 
     // Getters and setters to protect concurency of multiple threads
-    bool userIsGripping();
+    bool userIsGripping(void);
 
     void setUserIsGripping(bool value);
 
@@ -441,6 +430,32 @@ protected:
 private:
     boost::mutex controller_update_control_mutex_;
     boost::shared_mutex user_is_gripping_mutex_;
+    boost::shared_mutex running_mutex_, can_be_running_mutex_;
+
+    // Update function variables
+    bool running_;
+    bool can_be_running_;
+    ros::Time last_controller_time_base_;
+
+    // config variables
+    int orient_wheels_;
+    std::array<double, 3> orient_wheels_vel_;
+
+    //to detect no user gripping
+    int noGripTicks_;
+    bool userIsGripping_;
+    ros::Time timeSinceReleasing_;
+
+    //for fts recalibration
+    ros::ServiceClient fts_client_;
+
+    // Mutex-Protected getters and setters
+    bool getRunning();
+    bool getCanBeRunning();
+
+    void setRunning(bool value);
+    void setCanBeRunning(bool value);
+
 };
 
 }  // namespce robotrainer_controllers
