@@ -428,9 +428,12 @@ protected:
 
 
 private:
-    boost::mutex controller_update_control_mutex_;
-    boost::shared_mutex user_is_gripping_mutex_;
+    boost::mutex controller_internal_states_mutex_;
+    boost::mutex locking_mutex_;
     boost::shared_mutex running_mutex_, can_be_running_mutex_;
+    boost::shared_mutex user_is_gripping_mutex_;
+
+    bool controller_started_;
 
     // Update function variables
     bool running_;
@@ -449,13 +452,22 @@ private:
     //for fts recalibration
     ros::ServiceClient fts_client_;
 
+    // Controller running state control
+    double locking_number_;
+    void protectedToggleControllerRunning(const bool value, const double locking_number);
+    void startController(void);
+
+    // Protected change of controller internals
+    void setOrientWheels(std::array<double,3> direction);
+    bool unsafeRecalculateFTSOffsets();
+    std::string internalSetUseTwistInput(bool use_twist_input);
+
     // Mutex-Protected getters and setters
     bool getRunning();
     bool getCanBeRunning();
 
     void setRunning(bool value);
     void setCanBeRunning(bool value);
-
 };
 
 }  // namespce robotrainer_controllers

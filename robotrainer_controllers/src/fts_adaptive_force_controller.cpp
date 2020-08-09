@@ -320,7 +320,6 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                     break;
                 case finished:
                     ROS_WARN("[PARAM FINISHED!] - Parametrization has finished, setting robot to active!");
-//                     switchParametrizationStep();
                     recalculateFTSOffsets();
                     setSwitchStepRequested(true);
                     break;
@@ -491,12 +490,10 @@ void FTSAdaptiveForceController::returnRobotAutonomouslyToStartPosition(bool fin
 
     if (!autonomously_returning_ && secondsSinceLastGrip > 1.0) { // initalize returing
         setLEDPhase(robotInAutomaticMovement);
-        FTSBaseController::stopController();
         FTSBaseController::setUseTwistInput(true);
         autonomously_returning_ = true;
         autonomously_needed_time_sec_ = travelledDistance_ / 0.1;
         autonomously_start_time_ = current_loop_time_;
-        FTSBaseController::restartController();
         ROS_DEBUG("[BASE] - PHASE COMPLETED, RETURNING autonomously to start with following parameter: \n needed_time_sec: %f \n last_time_: %f \n velocity: %f", autonomously_needed_time_sec_, autonomously_start_time_.toSec(), 0.1);
     } else if ( autonomously_returning_ ) { //  move robot back to starting pointn
         autonomously_traveled_time_ = current_loop_time_ - autonomously_start_time_;
@@ -526,19 +523,16 @@ void FTSAdaptiveForceController::returnRobotAutonomouslyToStartPosition(bool fin
         }
         if (autonomously_traveled_time_.toSec() >= autonomously_needed_time_sec_) //robot has returned
         {
-            FTSBaseController::stopController();
+            recalculateFTSOffsets();
             FTSBaseController::setUseTwistInput(false);
             autonomously_returning_ = false;
             autonomously_needed_time_sec_ = 0;
             ROS_INFO("[BASE TEST] - COMPLETED AND RETURNED! - Phase completed and robot returned to starting point.");
-            recalculateFTSOffsets();
             baseForce_testCompleted_ = false;
             resetTravelledDistance();
-            FTSBaseController::restartController();
             setLEDPhase(phaseFinished);
             if (finished_successfully) {
                 setSwitchStepRequested(true);  // to trigger the next step
-//                 switchParametrizationStep();
             }
         }
     }
