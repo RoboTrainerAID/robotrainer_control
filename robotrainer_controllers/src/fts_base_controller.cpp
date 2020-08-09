@@ -182,9 +182,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
             apply_areal_counterforce_ = false;
         }
 
-
-        if (adapt_center_of_gravity_) force_input_ = adaptCenterOfGravity(force_input_);
-
+        if (adapt_center_of_gravity_ && userIsGripping()) force_input_ = adaptCenterOfGravity(force_input_);
 
         // calculate velocity using spring-mass-damping
         for (int i = 0; i < 3; i++) {
@@ -211,7 +209,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         delta_vel_ = std::pow(new_vel[0], 2) + std::pow(new_vel[1], 2) + std::pow(new_vel[2], 2);
 
 
-        if (modalities_used_ != none ) new_vel = applyModalities(new_vel); //apply modalities
+        if (modalities_used_ != none && userIsGripping()) new_vel = applyModalities(new_vel); //apply modalities
 
         if (pub_velocity_output_->trylock()) {
             pub_velocity_output_->msg_.x = new_vel[0];
@@ -670,7 +668,7 @@ std::array<double, 3> FTSBaseController::adaptCenterOfGravity(std::array<double,
 
         double changedTorque = fts_input_raw[0] * cog_y_ - fts_input_raw[1] * cog_x_ + fts_input_raw[2];
         std::array<double, 3> changedInput;
-        ROS_DEBUG("Changed torque from: %.2f to %.2f", fts_input_raw[2], changedTorque);
+        ROS_DEBUG("Changed torque from: %.2f to %.2f (Chnage: %f)", fts_input_raw[2], changedTorque, std::fabs(fts_input_raw[2]-changedTorque));
         changedInput[0] = fts_input_raw[0];
         changedInput[1] = fts_input_raw[1];
         changedInput[2] = changedTorque;
@@ -707,30 +705,41 @@ void FTSBaseController::discretizeWithNewParameters( std::array<double,3> time_c
 */
 void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level) {
 
+    // First check if anything changed, if not go out an do not stop controller
+    bool needs_stoppping = config.reset_controller || config.recalculate_FTS_offsets ||
+            no_hw_output_ != config.no_hw_output || use_twist_input_ != config.use_twist_input ||
+            config.apply_base_controller_params || config.apply_control_actions;
+    if (!needs_stoppping) {
+        return;
+    }
+
     stopController();
     ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
 
     if (config.reset_controller) {
-
-        ROS_DEBUG("[FTS_Base]: Called reset controller.");
+        ROS_INFO("[FTS_Base]: Resetting controller.");
         config.reset_controller = false;
         restartControllerAndOrientWheels({1, 0, 0});
         return;
     }
 
     if (config.recalculate_FTS_offsets) {
-        ROS_DEBUG("[FTS_Base]: Called recalculate offse.");
+        ROS_DEBUG("[FTS_Base]: recalculate offsets.");
         config.recalculate_FTS_offsets = false;
         recalculateFTSOffsets();
         restartController();
         return;
     }
 
-    no_hw_output_ = config.no_hw_output;
-    ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot will not move");
-    ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Simulation ON - Robot will move!!!");
-    use_twist_input_ = config.use_twist_input;
-    ROS_INFO_COND(use_twist_input_, "RoboTrainer controller now using _twist_ input");
+    if (no_hw_output_ != config.no_hw_output) {
+        no_hw_output_ = config.no_hw_output;
+        ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot _will_ move");
+        ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Simulation ON - Robot _will not_ move!!!");
+    }
+    if (use_twist_input_ != config.use_twist_input) {
+        setUseTwistInput(config.use_twist_input);
+    }
+
 
     if (config.apply_base_controller_params) {
             ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
@@ -914,6 +923,9 @@ std::array<double, 3> FTSBaseController::getFTSInput( const ros::Time& time ) {
     }
 //         lock.release();
     forceInputToLed( force_input );
+    if (!getRunning()) {
+        raw_fts_input = zeroForce_;
+    }
     return raw_fts_input;
 }
 
