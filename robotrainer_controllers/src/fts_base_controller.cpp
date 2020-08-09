@@ -151,6 +151,8 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     geom_->calcDirect(platform_state_);
     double platform_vel = std::pow(platform_state_.getVelX(), 2) + std::pow(platform_state_.getVelY(), 2) + std::pow(platform_state_.dRotRobRadS, 2);
     bool platform_is_moving_ = ( platform_vel > 0.001 );
+//     ROS_WARN_THROTTLE(1, "Base Controller time period between updates is: %f", (time-last_controller_time_base_).toSec());
+    last_controller_time_base_ = time;
 
     std::array<double, 3> new_vel;
     bool set_new_commands = true;
@@ -158,8 +160,6 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
 
     boost::mutex::scoped_lock controller_update_control_lock(controller_update_control_mutex_);
 
-    ROS_WARN_THROTTLE(1, "Base Controller time period between updates is: %f", (time-last_controller_time_base_).toSec());
-    last_controller_time_base_ = time;
 
     if (running and not use_twist_input_) {
         if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
@@ -557,60 +557,60 @@ bool FTSBaseController::configureModalitiesCallback(std_srvs::Empty::Request &re
  */
 std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> base_vel) {
 
-        std::array<double, 3> vel_after_modalities = base_vel;
-        geometry_msgs::Twist msg_before_modality;
-        geometry_msgs::Twist after_force_mod, after_walls_mod, after_pathtrack_mod, after_area_mod;
+    std::array<double, 3> vel_after_modalities = base_vel;
+    geometry_msgs::Twist msg_before_modality;
+    geometry_msgs::Twist after_force_mod, after_walls_mod, after_pathtrack_mod, after_area_mod;
 
 
-        switch (modalities_used_) {
-                case base_modalities:
+    switch (modalities_used_) {
+        case base_modalities:
 
-                        msg_before_modality.linear.x=base_vel[0];
-                        msg_before_modality.linear.y=base_vel[1];
-                        msg_before_modality.linear.z= 0.0;
-                        msg_before_modality.angular.x= 0.0;
-                        msg_before_modality.angular.y= 0.0;
-                        msg_before_modality.angular.z=base_vel[2];
+            msg_before_modality.linear.x=base_vel[0];
+            msg_before_modality.linear.y=base_vel[1];
+            msg_before_modality.linear.z= 0.0;
+            msg_before_modality.angular.x= 0.0;
+            msg_before_modality.angular.y= 0.0;
+            msg_before_modality.angular.z=base_vel[2];
 
-                        force_modality_ptr_->update(msg_before_modality, after_force_mod);
-                        walls_modality_ptr_->update(after_force_mod, after_walls_mod);
-                        pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
-                        area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
+            force_modality_ptr_->update(msg_before_modality, after_force_mod);
+            walls_modality_ptr_->update(after_force_mod, after_walls_mod);
+            pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
+            area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
 
-                        vel_after_modalities[0] = after_area_mod.linear.x;
-                        vel_after_modalities[1] = after_area_mod.linear.y;
-                        vel_after_modalities[2] = after_area_mod.angular.z;
-                        break;
+            vel_after_modalities[0] = after_area_mod.linear.x;
+            vel_after_modalities[1] = after_area_mod.linear.y;
+            vel_after_modalities[2] = after_area_mod.angular.z;
+            break;
 
-                case controller_modalities:
-                        msg_before_modality.linear.x=base_vel[0];
-                        msg_before_modality.linear.y=base_vel[1];
-                        msg_before_modality.linear.z= 0.0;
-                        msg_before_modality.angular.x= 0.0;
-                        msg_before_modality.angular.y= 0.0;
-                        msg_before_modality.angular.z=base_vel[2];
+        case controller_modalities:
+            msg_before_modality.linear.x=base_vel[0];
+            msg_before_modality.linear.y=base_vel[1];
+            msg_before_modality.linear.z= 0.0;
+            msg_before_modality.angular.x= 0.0;
+            msg_before_modality.angular.y= 0.0;
+            msg_before_modality.angular.z=base_vel[2];
 
-                        robotrainer_helper_types::wrench_twist input_msg_before_modality;
-                        robotrainer_helper_types::wrench_twist output_msg_after_modality;
+            robotrainer_helper_types::wrench_twist input_msg_before_modality;
+            robotrainer_helper_types::wrench_twist output_msg_after_modality;
 
-                        input_msg_before_modality.twist_ = msg_before_modality;
-                        input_msg_before_modality.wrench_.force.x = force_input_[0];
-                        input_msg_before_modality.wrench_.force.y = force_input_[1];
-                        input_msg_before_modality.wrench_.force.z = 0.0;
-                        input_msg_before_modality.wrench_.torque.x = 0.0;
-                        input_msg_before_modality.wrench_.torque.y = 0.0;
-                        input_msg_before_modality.wrench_.torque.z = force_input_[2];
+            input_msg_before_modality.twist_ = msg_before_modality;
+            input_msg_before_modality.wrench_.force.x = force_input_[0];
+            input_msg_before_modality.wrench_.force.y = force_input_[1];
+            input_msg_before_modality.wrench_.force.z = 0.0;
+            input_msg_before_modality.wrench_.torque.x = 0.0;
+            input_msg_before_modality.wrench_.torque.y = 0.0;
+            input_msg_before_modality.wrench_.torque.z = force_input_[2];
 
-                        force_controller_modality_ptr_->update(input_msg_before_modality, output_msg_after_modality);
-                        walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
-                        pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
+            force_controller_modality_ptr_->update(input_msg_before_modality, output_msg_after_modality);
+            walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
+            pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
 
-                        vel_after_modalities[0] = output_msg_after_modality.twist_.linear.x;
-                        vel_after_modalities[1] = output_msg_after_modality.twist_.linear.y;
-                        vel_after_modalities[2] = output_msg_after_modality.twist_.angular.z;
-                        break;
-        }
-        return vel_after_modalities;
+            vel_after_modalities[0] = output_msg_after_modality.twist_.linear.x;
+            vel_after_modalities[1] = output_msg_after_modality.twist_.linear.y;
+            vel_after_modalities[2] = output_msg_after_modality.twist_.angular.z;
+            break;
+    }
+    return vel_after_modalities;
 
 }
 
@@ -621,22 +621,22 @@ std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> 
  */
 std::array<double, 3> FTSBaseController::applyCounterforce( std::array<double, 3> scaledInputForce, std::array<double, 3> scaledCounterforce) {
 
-        std::array<double, 3> resultingForce = scaledInputForce;
+    std::array<double, 3> resultingForce = scaledInputForce;
 
-        //counter adaption in respective dimension only if result would be positive, else scale to zero
-        for (int i = 0; i < 3; i++) {
-                if ( (scaledInputForce[i] < 0.0) && (scaledInputForce[i] + scaledCounterforce[i] < 0.0) ) {
-                        resultingForce[i] = scaledInputForce[i] + scaledCounterforce[i];
-                } else if ( (scaledInputForce[i] > 0.0) && (scaledInputForce[i] - scaledCounterforce[i] > 0.0) ) {
-                        resultingForce[i] = scaledInputForce[i] - scaledCounterforce[i];
-                } else { //doNothing as it is negative
-                        resultingForce[i] = 0.0;
-                }
+    //counter adaption in respective dimension only if result would be positive, else scale to zero
+    for (int i = 0; i < 3; i++) {
+        if ( (scaledInputForce[i] < 0.0) && (scaledInputForce[i] + scaledCounterforce[i] < 0.0) ) {
+            resultingForce[i] = scaledInputForce[i] + scaledCounterforce[i];
+        } else if ( (scaledInputForce[i] > 0.0) && (scaledInputForce[i] - scaledCounterforce[i] > 0.0) ) {
+            resultingForce[i] = scaledInputForce[i] - scaledCounterforce[i];
+        } else { //doNothing as it is negative
+            resultingForce[i] = 0.0;
         }
+    }
 
-        ROS_DEBUG("[CounterForceModality] - ScaledInputForce: [%.2f, %.2f, %.2f] - ScaledCounterForce: [%.2f, %.2f, %.2f] - ScaledResultingForce: [%.2f, %.2f, %.2f]",
-                  scaledInputForce[0], scaledInputForce[1], scaledInputForce[2], scaledCounterforce[0], scaledCounterforce[1], scaledCounterforce[2], resultingForce[0], resultingForce[1], resultingForce[2] );
-        return resultingForce;
+    ROS_DEBUG("[CounterForceModality] - ScaledInputForce: [%.2f, %.2f, %.2f] - ScaledCounterForce: [%.2f, %.2f, %.2f] - ScaledResultingForce: [%.2f, %.2f, %.2f]",
+        scaledInputForce[0], scaledInputForce[1], scaledInputForce[2], scaledCounterforce[0], scaledCounterforce[1], scaledCounterforce[2], resultingForce[0], resultingForce[1], resultingForce[2] );
+    return resultingForce;
 }
 
 /**
@@ -707,112 +707,112 @@ void FTSBaseController::discretizeWithNewParameters( std::array<double,3> time_c
 */
 void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level) {
 
-        stopController();
-        ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
+    stopController();
+    ROS_DEBUG("[FTS_Base_Ctrlr]: In dyn reconfigure.");
 
-        if (config.reset_controller) {
+    if (config.reset_controller) {
 
-            ROS_DEBUG("[FTS_Base]: Called reset controller.");
-            config.reset_controller = false;
-            restartControllerAndOrientWheels({1, 0, 0});
-            return;
-        }
+        ROS_DEBUG("[FTS_Base]: Called reset controller.");
+        config.reset_controller = false;
+        restartControllerAndOrientWheels({1, 0, 0});
+        return;
+    }
 
-        if (config.recalculate_FTS_offsets) {
-            ROS_DEBUG("[FTS_Base]: Called recalculate offse.");
-            config.recalculate_FTS_offsets = false;
-            recalculateFTSOffsets();
-            restartController();
-            return;
-        }
-
-        no_hw_output_ = config.no_hw_output;
-        ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot will not move");
-        ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Simulation ON - Robot will move!!!");
-        use_twist_input_ = config.use_twist_input;
-        ROS_INFO_COND(use_twist_input_, "RoboTrainer controller now using _twist_ input");
-
-        if (config.apply_base_controller_params) {
-                ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
-                //Use different dimensions
-                use_controller_[0] = config.x_force_controller;
-                ROS_INFO_COND(!use_controller_[0], "X Dimension switched off");
-                use_controller_[1] = config.y_force_controller;
-                ROS_INFO_COND(!use_controller_[0], "Y Dimension switched off");
-                use_controller_[2] = config.rot_controller;
-                ROS_INFO_COND(!use_controller_[0], "Rotational Dimension switched off");
-                //Force-torque limits
-                min_ft_[0] = config.x_min_force;
-                max_ft_[0] = config.x_max_force;
-                min_ft_[1] = config.y_min_force;
-                max_ft_[1] = config.y_max_force;
-                min_ft_[2] = config.rot_min_torque;
-                max_ft_[2] = config.rot_max_torque;
-                // velocity limits
-                max_vel_[0] = config.x_max_vel;
-                max_vel_[1] = config.y_max_vel;
-                max_vel_[2] = config.rot_max_rot_vel;
-                // controller parameters
-                gain_[0] = config.x_gain;
-                time_const_[0] = config.x_time_const;
-                gain_[1] = config.y_gain;
-                time_const_[1] = config.y_time_const;
-                gain_[2] = config.rot_gain;
-                time_const_[2] = config.rot_time_const;
-                config.apply_base_controller_params = false;
-        }
-
-
-        if (config.apply_control_actions) {
-                ROS_INFO("[FTS_Base_Ctrlr]: Applying Control actions as set in dynamic reconfigure!");
-
-                int modality_type = config.spatial_control_action_type;
-                if (modality_type == 1) {
-                        if (modalities_configured_) {
-                                modalities_used_ = base_modalities;
-                                begin_scaledown_at_this_dist_ = config.counterforce_area_scaledown_dist;
-                                areaCounterForce_[0] = config.area_counter_force_x;
-                                areaCounterForce_[1] = config.area_counter_force_y;
-                                areaCounterForce_[2] = config.area_counter_torque_rot;
-                        } else {
-                                ROS_WARN("Request to use base_modalities although none have been configured yet. Please send a configuration first!");
-                                modalities_used_ = none;
-                        }
-                } else if (modality_type == 2) {
-                        if (modalities_configured_) {
-                                modalities_used_ = controller_modalities;
-                        } else {
-                                ROS_WARN("Request to use controller_modalities although none have been configured yet. Please send a configuration first!");
-                                modalities_used_ = none;
-                        }
-                } else {
-                        modalities_used_ = none;
-                }
-
-                //global modalities
-                yReversed_ = config.y_reversed;
-                rotReversed_ = config.rot_reversed;
-                backwardsMaxForceScale_ = config.backwards_max_force_scale;
-                backwardsMaxVelScale_ = config.backwards_max_vel_scale;
-                enableCounterForce_ = config.enable_counter_force;
-                if (enableCounterForce_) {
-                        staticCounterForce_[0] = config.counter_force_x;
-                        staticCounterForce_[1] = config.counter_force_y;
-                        staticCounterForce_[2] = config.counter_torque_rot;
-                }
-
-                adapt_center_of_gravity_ = config.adapt_center_of_gravity;
-                if (adapt_center_of_gravity_) {
-                        cog_x_ = config.cog_x;
-                        cog_y_ = config.cog_y;
-                        ROS_DEBUG("[ADAPT_CoG: ON] - Cog: (x:%.2f, y:%.2f)", cog_x_, cog_y_);
-                }
-                config.apply_control_actions = false;
-        }
-
-        base_reconfigured_flag_ = true;
-
+    if (config.recalculate_FTS_offsets) {
+        ROS_DEBUG("[FTS_Base]: Called recalculate offse.");
+        config.recalculate_FTS_offsets = false;
+        recalculateFTSOffsets();
         restartController();
+        return;
+    }
+
+    no_hw_output_ = config.no_hw_output;
+    ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot will not move");
+    ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Simulation ON - Robot will move!!!");
+    use_twist_input_ = config.use_twist_input;
+    ROS_INFO_COND(use_twist_input_, "RoboTrainer controller now using _twist_ input");
+
+    if (config.apply_base_controller_params) {
+            ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
+            //Use different dimensions
+            use_controller_[0] = config.x_force_controller;
+            ROS_INFO_COND(!use_controller_[0], "X Dimension switched off");
+            use_controller_[1] = config.y_force_controller;
+            ROS_INFO_COND(!use_controller_[0], "Y Dimension switched off");
+            use_controller_[2] = config.rot_controller;
+            ROS_INFO_COND(!use_controller_[0], "Rotational Dimension switched off");
+            //Force-torque limits
+            min_ft_[0] = config.x_min_force;
+            max_ft_[0] = config.x_max_force;
+            min_ft_[1] = config.y_min_force;
+            max_ft_[1] = config.y_max_force;
+            min_ft_[2] = config.rot_min_torque;
+            max_ft_[2] = config.rot_max_torque;
+            // velocity limits
+            max_vel_[0] = config.x_max_vel;
+            max_vel_[1] = config.y_max_vel;
+            max_vel_[2] = config.rot_max_rot_vel;
+            // controller parameters
+            gain_[0] = config.x_gain;
+            time_const_[0] = config.x_time_const;
+            gain_[1] = config.y_gain;
+            time_const_[1] = config.y_time_const;
+            gain_[2] = config.rot_gain;
+            time_const_[2] = config.rot_time_const;
+            config.apply_base_controller_params = false;
+    }
+
+
+    if (config.apply_control_actions) {
+        ROS_INFO("[FTS_Base_Ctrlr]: Applying Control actions as set in dynamic reconfigure!");
+
+        int modality_type = config.spatial_control_action_type;
+        if (modality_type == 1) {
+            if (modalities_configured_) {
+                modalities_used_ = base_modalities;
+                begin_scaledown_at_this_dist_ = config.counterforce_area_scaledown_dist;
+                areaCounterForce_[0] = config.area_counter_force_x;
+                areaCounterForce_[1] = config.area_counter_force_y;
+                areaCounterForce_[2] = config.area_counter_torque_rot;
+            } else {
+                ROS_WARN("Request to use base_modalities although none have been configured yet. Please send a configuration first!");
+                modalities_used_ = none;
+        }
+        } else if (modality_type == 2) {
+            if (modalities_configured_) {
+                modalities_used_ = controller_modalities;
+            } else {
+                ROS_WARN("Request to use controller_modalities although none have been configured yet. Please send a configuration first!");
+                modalities_used_ = none;
+            }
+        } else {
+            modalities_used_ = none;
+        }
+
+        //global modalities
+        yReversed_ = config.y_reversed;
+        rotReversed_ = config.rot_reversed;
+        backwardsMaxForceScale_ = config.backwards_max_force_scale;
+        backwardsMaxVelScale_ = config.backwards_max_vel_scale;
+        enableCounterForce_ = config.enable_counter_force;
+        if (enableCounterForce_) {
+            staticCounterForce_[0] = config.counter_force_x;
+            staticCounterForce_[1] = config.counter_force_y;
+            staticCounterForce_[2] = config.counter_torque_rot;
+        }
+
+        adapt_center_of_gravity_ = config.adapt_center_of_gravity;
+        if (adapt_center_of_gravity_) {
+            cog_x_ = config.cog_x;
+            cog_y_ = config.cog_y;
+            ROS_DEBUG("[ADAPT_CoG: ON] - Cog: (x:%.2f, y:%.2f)", cog_x_, cog_y_);
+        }
+        config.apply_control_actions = false;
+    }
+
+    base_reconfigured_flag_ = true;
+
+    restartController();
 }
 
 
@@ -821,8 +821,8 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
  */
 void FTSBaseController::counterforce_area_callback( const std_msgs::Float64::ConstPtr& msg ) {
 
-        counterforce_distance_to_center_ = msg->data;
-        apply_areal_counterforce_ = true;
+    counterforce_distance_to_center_ = msg->data;
+    apply_areal_counterforce_ = true;
 }
 
 
