@@ -343,24 +343,42 @@ void FTSBaseController::protectedToggleControllerRunning(const bool value, const
         return;
     }
     boost::mutex::scoped_lock lock(locking_mutex_);
-    if (!value && locking_number_ == -1) { // stop controller and lock
+    if (!value) {
         stopController();
+        // 1st
+        ROS_WARN_COND(locking_number_ == -1, "Running Control: Current Locking nr. not set - locking!");
+        ROS_WARN("Requested Locking Nr: '%f'", locking_number);
+        // 2nd
+        ROS_WARN_COND(locking_number_ == locking_number, "Requested Unlocking without start the controller!");
         locking_number_ = locking_number;
-        ROS_INFO("Running Control: Locking nr: '%f'", locking_number);
-    } else if(!value && locking_number_ == locking_number) { // unlock without starting when a issue happens
-        stopController();
-        locking_number_ = -1;
-        ROS_ERROR("Running Control: Releasing without starting controller! An issue happend, check it an restart controller manually! Releasing nr: '%f'", locking_number);
-    } else if (value && locking_number_ == locking_number) { // start controller and unlock
+    }
+    if (value) {
         startController();
-        locking_number_ = -1;
-        ROS_INFO("Running Control: Releasing nr: '%f'", locking_number);
+        ROS_WARN_COND(locking_number_ == locking_number, "Request unlock for '%f' - unlocking!", locking_number);
+
+        ROS_FATAL_COND(locking_number_ == -1, "Trying to unlock not locked toggle!");
+
+        ROS_FATAL_COND((locking_number_ != -1 && locking_number_ != locking_number), "Request unlock for not allowed '%f'; allowed number is %f", locking_number, locking_number_);
     }
-    else if (value && locking_number_ == -1) {
-        ROS_FATAL("Trying to unlock not locked toggle!");
-    } else if (locking_number_ != locking_number) {
-        ROS_FATAL("Access denied: Controller Toggle is locked!");
-    }
+
+//     if (!value && locking_number_ == -1) { // stop controller and lock
+//         stopController();
+//         locking_number_ = locking_number;
+//         ROS_INFO("Running Control: Locking nr: '%f'", locking_number);
+//     } else if(!value && locking_number_ == locking_number) { // unlock without starting when a issue happens
+//         stopController();
+//         locking_number_ = -1;
+//         ROS_ERROR("Running Control: Releasing without starting controller! An issue happend, check it an restart controller manually! Releasing nr: '%f'", locking_number);
+//     } else if (value && locking_number_ == locking_number) { // start controller and unlock
+//         startController();
+//         locking_number_ = -1;
+//         ROS_INFO("Running Control: Releasing nr: '%f'", locking_number);
+//     }
+//     else if (value && locking_number_ == -1) {
+//         ROS_FATAL("Trying to unlock not locked toggle!");
+//     } else if (locking_number_ != locking_number) {
+//         ROS_FATAL("Access denied: Controller Toggle is locked!");
+//     }
 }
 
 /**
@@ -861,33 +879,33 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     }
 
     if (config.apply_base_controller_params) {
-            ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
-            //Use different dimensions
-            use_controller_[0] = config.x_force_controller;
-            ROS_INFO_COND(!use_controller_[0], "X Dimension switched off");
-            use_controller_[1] = config.y_force_controller;
-            ROS_INFO_COND(!use_controller_[0], "Y Dimension switched off");
-            use_controller_[2] = config.rot_controller;
-            ROS_INFO_COND(!use_controller_[0], "Rotational Dimension switched off");
-            //Force-torque limits
-            min_ft_[0] = config.x_min_force;
-            max_ft_[0] = config.x_max_force;
-            min_ft_[1] = config.y_min_force;
-            max_ft_[1] = config.y_max_force;
-            min_ft_[2] = config.rot_min_torque;
-            max_ft_[2] = config.rot_max_torque;
-            // velocity limits
-            max_vel_[0] = config.x_max_vel;
-            max_vel_[1] = config.y_max_vel;
-            max_vel_[2] = config.rot_max_rot_vel;
-            // controller parameters
-            gain_[0] = config.x_gain;
-            time_const_[0] = config.x_time_const;
-            gain_[1] = config.y_gain;
-            time_const_[1] = config.y_time_const;
-            gain_[2] = config.rot_gain;
-            time_const_[2] = config.rot_time_const;
-            config.apply_base_controller_params = false;
+        ROS_INFO("[FTS_Base_Ctrlr]: Applying base controller parameters as set in dynamic reconfigure!");
+        //Use different dimensions
+        use_controller_[0] = config.x_force_controller;
+        ROS_INFO_COND(!use_controller_[0], "X Dimension switched off");
+        use_controller_[1] = config.y_force_controller;
+        ROS_INFO_COND(!use_controller_[0], "Y Dimension switched off");
+        use_controller_[2] = config.rot_controller;
+        ROS_INFO_COND(!use_controller_[0], "Rotational Dimension switched off");
+        //Force-torque limits
+        min_ft_[0] = config.x_min_force;
+        max_ft_[0] = config.x_max_force;
+        min_ft_[1] = config.y_min_force;
+        max_ft_[1] = config.y_max_force;
+        min_ft_[2] = config.rot_min_torque;
+        max_ft_[2] = config.rot_max_torque;
+        // velocity limits
+        max_vel_[0] = config.x_max_vel;
+        max_vel_[1] = config.y_max_vel;
+        max_vel_[2] = config.rot_max_rot_vel;
+        // controller parameters
+        gain_[0] = config.x_gain;
+        time_const_[0] = config.x_time_const;
+        gain_[1] = config.y_gain;
+        time_const_[1] = config.y_time_const;
+        gain_[2] = config.rot_gain;
+        time_const_[2] = config.rot_time_const;
+        config.apply_base_controller_params = false;
     }
 
 

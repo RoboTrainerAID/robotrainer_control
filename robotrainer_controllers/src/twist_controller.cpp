@@ -32,17 +32,23 @@ public:
     virtual bool init(hardware_interface::VelocityJointInterface* hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh){
         ros::NodeHandle wheels_nh(root_nh, "wheel_controller");
         wheel_ctrl_nh_ = wheels_nh;
-        
+
         if(!cob_omni_drive_controller::parseWheelParams(wheel_params_, wheel_ctrl_nh_) || !OdomGeomController::init(hw, wheel_params_)) return false;
 
         pos_ctrl_.init(wheel_params_, controller_nh);
-        
+
         // Kinematics services
         service_kinematic_update_ = controller_nh.advertiseService("update_kinematics", &WheelController::updateWheelParamsCallback, this);
 
         return setup(root_nh, controller_nh);
     }
     virtual void update(const ros::Time& time, const ros::Duration& period){
+
+        target_.state.setVelX(limitValue(twist_command_.linear.x, max_vel_trans_));
+        target_.state.setVelY(limitValue(twist_command_.linear.y, max_vel_trans_));
+        target_.state.dRotRobRadS = limitValue(twist_command_.angular.z, max_vel_rot_);
+        target_.updated = true;
+        target_.stamp = ros::Time::now();
 
         boost::mutex::scoped_try_lock lock_geom(mutex_geom_);
         if (lock_geom) {
@@ -58,9 +64,9 @@ public:
         }
 
     }
-    
+
     bool updateWheelParamsCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp) {
-    
+
         ROS_DEBUG("Called service to update kinematic configuration");
         boost::mutex::scoped_lock lock(mutex_geom_);
         for (unsigned i=0; i<wheel_commands_.size(); i++){
@@ -71,11 +77,11 @@ public:
         resp.success &= cob_omni_drive_controller::parseWheelParams(wheel_params_, wheel_ctrl_nh_);
         resp.success &= OdomGeomController::update(wheel_params_);
         ROS_INFO("Kinematics sucessfully updated!");
-        
+
         return true;
     }
-    
-    
+
+
     class PosCtrl {
     public:
         PosCtrl() : updated(false) {}
@@ -151,9 +157,9 @@ public:
 private:
     ros::NodeHandle wheel_ctrl_nh_;
     ros::ServiceServer service_kinematic_update_;
-    
+
     wheel_params_t wheel_params_;
-    
+
     boost::mutex mutex_geom_;
 };
 
