@@ -23,6 +23,7 @@
 #include <std_srvs/Trigger.h>
 #include <pluginlib/class_list_macros.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/WrenchStamped.h>
 //FIXME: remove this tf stuff?
 #include <tf/transform_datatypes.h>
@@ -295,7 +296,7 @@ protected:
     filters::FilterChain<geometry_msgs::Twist>* chain_ptr_ = new filters::FilterChain<geometry_msgs::Twist>("geometry_msgs::Twist"); //Node template type and argument must match
     bool modalities_chain_configured_;
     //debug
-    realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_velocity_output_;
+    realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped> *pub_velocity_output_;
     realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> *pub_force_input_raw_, *pub_input_force_for_led_;
     realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_resulting_force_after_counterforce_;
 
@@ -392,6 +393,9 @@ protected:
 
 
     void reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level);
+    
+    double calculatevirtualdamping(double maxforce, double maxvelocity, double gain);
+    double calculatevirtualmass(double timeconstant, double damping);
 
     //getter functions
     std::array<double, 3> getScaledLimitedFTSInput( std::array<double, 3> rawFTSInput );
@@ -453,7 +457,7 @@ private:
     ros::ServiceClient fts_client_;
 
     // Controller running state control
-    double locking_number_;
+    double locking_number_ = -1;
     void protectedToggleControllerRunning(const bool value, const double locking_number);
     void startController(void);
 

@@ -54,7 +54,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
     /* Debug messages */
     // TODO: Is it more convenient to be twist
-    pub_velocity_output_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(ctrl_nh_, "velocity_output", 1);
+    pub_velocity_output_ = new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(ctrl_nh_, "velocity_output", 1);
     pub_force_input_raw_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(ctrl_nh_, "input_wrench_limited", 1);
     pub_input_force_for_led_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(root_nh, "/leds_rectangle/led_force", 1);
     pub_resulting_force_after_counterforce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(ctrl_nh_, "after_counterforce_modality", 1);
@@ -212,9 +212,11 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         if (modalities_used_ != none && userIsGripping()) new_vel = applyModalities(new_vel); //apply modalities
 
         if (pub_velocity_output_->trylock()) {
-            pub_velocity_output_->msg_.x = new_vel[0];
-            pub_velocity_output_->msg_.y = new_vel[1];
-            pub_velocity_output_->msg_.z = new_vel[2];
+            pub_velocity_output_->msg_.header.stamp = time;
+            pub_velocity_output_->msg_.header.frame_id = controllerFrameId_;
+            pub_velocity_output_->msg_.twist.linear.x = new_vel[0];
+            pub_velocity_output_->msg_.twist.linear.y = new_vel[1];
+            pub_velocity_output_->msg_.twist.angular.z = new_vel[2];
             pub_velocity_output_->unlockAndPublish();
         }
 
@@ -345,20 +347,27 @@ void FTSBaseController::protectedToggleControllerRunning(const bool value, const
     boost::mutex::scoped_lock lock(locking_mutex_);
     if (!value) {
         stopController();
-        // 1st
-        ROS_WARN_COND(locking_number_ == -1, "Running Control: Current Locking nr. not set - locking!");
         ROS_WARN("Requested Locking Nr: '%f'", locking_number);
-        // 2nd
-        ROS_WARN_COND(locking_number_ == locking_number, "Requested Unlocking without start the controller!");
-        locking_number_ = locking_number;
+        if (locking_number_ == -1) {
+            // 1st
+            ROS_WARN("Running Control: Current Locking nr. not set - locking!");
+            locking_number_ = locking_number;
+        } else if (locking_number_ == locking_number) {
+            // 2nd
+            ROS_WARN("Requested Unlocking without start the controller!");
+            locking_number_ = -1;
+        }
     }
     if (value) {
         startController();
-        ROS_WARN_COND(locking_number_ == locking_number, "Request unlock for '%f' - unlocking!", locking_number);
-
-        ROS_FATAL_COND(locking_number_ == -1, "Trying to unlock not locked toggle!");
-
-        ROS_FATAL_COND((locking_number_ != -1 && locking_number_ != locking_number), "Request unlock for not allowed '%f'; allowed number is %f", locking_number, locking_number_);
+        if (locking_number_ == locking_number) {
+            ROS_WARN("Request unlock for '%f' - unlocking!", locking_number);
+            locking_number_ = -1;
+        } else if (locking_number_ == -1) {
+            ROS_FATAL("Trying to unlock not locked toggle!");
+        } else {
+            ROS_FATAL("Request unlock for not allowed '%f'; allowed number is %f", locking_number, locking_number_);
+        }
     }
 
 //     if (!value && locking_number_ == -1) { // stop controller and lock
@@ -842,6 +851,15 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     if (!controller_started_) {
         return;
     }
+    
+    // Upate values in GUI only
+    config.x_damping = calculatevirtualdamping(config.x_max_force, config.x_max_vel, config.x_gain);
+    config.x_mass = calculatevirtualmass(config.x_time_const, config.x_damping);    
+    config.y_damping = calculatevirtualdamping(config.y_max_force, config.y_max_vel, config.y_gain);
+    config.y_mass = calculatevirtualmass(config.y_time_const, config.y_damping);    
+    config.rot_damping = calculatevirtualdamping(config.rot_max_torque, config.rot_max_rot_vel, config.rot_gain);
+    config.rot_intertia = calculatevirtualmass(config.rot_time_const, config.rot_damping);
+    
     // First check if anything changed, if not go out an do not stop controller
     bool needs_processing = config.reset_controller || config.recalculate_FTS_offsets ||
             no_hw_output_ != config.no_hw_output || use_twist_input_ != config.use_twist_input ||
@@ -959,6 +977,16 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     base_reconfigured_flag_ = true;
 
     protectedToggleControllerRunning(true, lock);
+}
+
+double FTSBaseController::calculatevirtualdamping(double maxforce, double maxvelocity, double gain)
+{
+    return (maxforce/maxvelocity) * (1/gain);
+}
+
+double FTSBaseController::calculatevirtualmass(double timeconstant, double damping)
+{
+    return timeconstant*damping;
 }
 
 
