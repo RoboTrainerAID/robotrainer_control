@@ -34,6 +34,7 @@
   <depend>cmake_modules</depend>
   <depend>control_toolbox</depend>
   <depend>controller_interface</depend>
+  <depend>diagnostic_updater</depend>
   <depend>force_torque_sensor</depend>
   <depend>geometry_msgs</depend>
   <depend>hardware_interface</depend>

@@ -4,6 +4,8 @@
 
 #include <thread>
 
+#include <diagnostic_updater/diagnostic_updater.h>
+
 #include "robotrainer_controllers/fts_wheelControllerBase.h"
 #include "robotrainer_controllers/fts_GeomController.h"
 #include "robotrainer_controllers/FTSBaseControllerConfig.h"
@@ -342,6 +344,7 @@ protected:
     // Basic parameters
     bool no_hw_output_;
     bool use_twist_input_;
+    // TODO: rename this to use proper casing
     double controllerUpdateRate_;
     std::string controllerFrameId_;
 
@@ -431,6 +434,9 @@ protected:
     void setUserIsGripping(bool value);
 
 
+protected:
+    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
+
 private:
     boost::mutex controller_internal_states_mutex_;
     boost::mutex locking_mutex_;
@@ -439,10 +445,13 @@ private:
 
     bool controller_started_;
 
+    diagnostic_updater::Updater diagnostic_;
+
     // Update function variables
     bool running_;
     bool can_be_running_;
     ros::Time last_controller_time_base_;
+    bool platform_is_moving_ = false;
 
     // config variables
     int orient_wheels_;
@@ -475,4 +484,4 @@ private:
 };
 
 }  // namespce robotrainer_controllers
-#endif
+#endif  // ROBOTRAINER_CONTROLLERS_FTS_BASE_CONTROLLER_H

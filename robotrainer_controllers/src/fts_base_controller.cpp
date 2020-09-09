@@ -9,6 +9,10 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ros::NodeHandle wheels_nh(root_nh, "wheel_controller");
     wheel_ctrl_nh_ = wheels_nh;
 
+    diagnostic_.add("RoboTrainer Controller Status", this, &FTSBaseController::diagnostics);
+    diagnostic_.setHardwareID("FTS_Base_Controller");
+    diagnostic_.broadcast(0, "Initializing FTS Base Controller");
+
     /* get Parameters from rosparam server (stored on yaml file) */
     ros::NodeHandle fts_base_ctrl_nh(ctrl_nh_, "FTSBaseController");
     fts_base_ctrl_nh.param<bool>("no_hw_output", no_hw_output_, true);
@@ -118,6 +122,9 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     apply_areal_counterforce_ = false;
 
     base_initialized_ = WheelControllerBase::setup(root_nh, wheel_ctrl_nh_);
+
+    diagnostic_.force_update();
+
     return base_initialized_;
 }
 
@@ -126,9 +133,15 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
  */
 void FTSBaseController::starting(const ros::Time& time) {
     WheelControllerBase::starting(time);
-    restartControllerAndOrientWheels(std::array<double, 3>({1, 0, 0}));
-    last_controller_time_base_ = time;
     controller_started_ = true;
+
+    // Calculate FTS offsets and reset with reorienting wheels
+    double lock = (ros::Time::now() - ros::Duration(323*24*60*60)).toSec();
+    protectedToggleControllerRunning(false, lock);
+    bool ret = unsafeRecalculateFTSOffsets();
+    setOrientWheels(std::array<double, 3>({1, 0, 0}));
+    last_controller_time_base_ = time;
+    protectedToggleControllerRunning(ret, lock);
 }
 
 /**
@@ -151,7 +164,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     updateState();
     geom_->calcDirect(platform_state_);
     double platform_vel = std::pow(platform_state_.getVelX(), 2) + std::pow(platform_state_.getVelY(), 2) + std::pow(platform_state_.dRotRobRadS, 2);
-    bool platform_is_moving_ = ( platform_vel > 0.001 );
+    platform_is_moving_ = ( platform_vel > 0.001 );
 //     ROS_WARN_THROTTLE(1, "Base Controller time period between updates is: %f", (time-last_controller_time_base_).toSec());
     last_controller_time_base_ = time;
 
@@ -281,6 +294,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         steer_joints_[i].setCommand(wheel_commands_[i].dVelGearSteerRadS);
         drive_joints_[i].setCommand(wheel_commands_[i].dVelGearDriveRadS);
     }
+    diagnostic_.update();
 }
 
 /**
@@ -369,6 +383,7 @@ void FTSBaseController::protectedToggleControllerRunning(const bool value, const
             ROS_FATAL("Request unlock for not allowed '%f'; allowed number is %f", locking_number, locking_number_);
         }
     }
+    diagnostic_.force_update();
 
 //     if (!value && locking_number_ == -1) { // stop controller and lock
 //         stopController();
@@ -452,6 +467,28 @@ std::string FTSBaseController::internalSetUseTwistInput(bool use_twist_input) {
     }
     ROS_DEBUG("%s", message.c_str());
     return message;
+}
+
+/// \brief Publishes diagnostics and status
+void FTSBaseController::diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status)
+{
+    if (getRunning()) {
+        status.summary(0, "Controller is running");
+    } else {
+        status.summary(1, "Cotroller is not running");
+    }
+
+    status.add("running", getRunning());
+    status.add("can be running", getCanBeRunning());
+    status.add("locking number", locking_number_);
+    status.add("user is gripping", userIsGripping());
+    status.add("platform is moving", platform_is_moving_);
+    status.add("use twist input", use_twist_input_);
+    status.add("no hardware output", no_hw_output_);
+    status.add("modalities used", modalities_used_);
+    status.add("adapt center of gravity", adapt_center_of_gravity_);
+    status.add("orient wheels", orient_wheels_);
+    status.add("controller frame id", controllerFrameId_);
 }
 
 /*_____PROTECTED GETTERS AND SETTERS_____*/
@@ -852,7 +889,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         return;
     }
     
-    // Upate values in GUI only
+    // Update values in GUI only
     config.x_damping = calculatevirtualdamping(config.x_max_force, config.x_max_vel, config.x_gain);
     config.x_mass = calculatevirtualmass(config.x_time_const, config.x_damping);    
     config.y_damping = calculatevirtualdamping(config.y_max_force, config.y_max_vel, config.y_gain);

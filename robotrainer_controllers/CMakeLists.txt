@@ -6,6 +6,7 @@ find_package(catkin REQUIRED COMPONENTS
     cob_base_controller_utils
     cob_omni_drive_controller
     controller_interface
+    diagnostic_updater
     force_torque_sensor
     geometry_msgs
     hardware_interface
