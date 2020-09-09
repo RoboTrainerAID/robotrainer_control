@@ -126,9 +126,9 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
  */
 void FTSBaseController::starting(const ros::Time& time) {
     WheelControllerBase::starting(time);
-    restartControllerAndOrientWheels(std::array<double, 3>({1, 0, 0}));
-    last_controller_time_base_ = time;
     controller_started_ = true;
+    last_controller_time_base_ = time;
+    restartControllerAndOrientWheels(std::array<double, 3>({1, 0, 0}));
 }
 
 /**
