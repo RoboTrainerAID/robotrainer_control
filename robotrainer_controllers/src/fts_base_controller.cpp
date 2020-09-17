@@ -1,13 +1,20 @@
 #include "robotrainer_controllers/fts_base_controller.h"
+
+#include "robotrainer_controllers/fts_controllers_led_defines.hpp"
 #include <pluginlib/class_loader.h>
 
-namespace robotrainer_controllers {
-FTSBaseController::FTSBaseController(){}
+namespace robotrainer_controllers 
+{
+    
 bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle &controller_nh) {
     ROS_INFO("Init FTSBaseController!");
     ctrl_nh_ = controller_nh;
     ros::NodeHandle wheels_nh(root_nh, "wheel_controller");
     wheel_ctrl_nh_ = wheels_nh;
+
+    diagnostic_.add("RoboTrainer Controller Status", this, &FTSBaseController::diagnostics);
+    diagnostic_.setHardwareID("FTS_Base_Controller");
+    diagnostic_.broadcast(0, "Initializing FTS Base Controller");
 
     /* get Parameters from rosparam server (stored on yaml file) */
     ros::NodeHandle fts_base_ctrl_nh(ctrl_nh_, "FTSBaseController");
@@ -17,6 +24,8 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     fts_base_ctrl_nh.param<std::string>("frame_id", controllerFrameId_, "base_link");
     fts_base_ctrl_nh.param<bool>("y_reversed", yReversed_, false);
     fts_base_ctrl_nh.param<bool>("rot_reversed", rotReversed_, false);
+    fts_base_ctrl_nh.param<double>("reversed_max_force_scale", reversedMaxForceScale_, 0.25);
+    fts_base_ctrl_nh.param<double>("reversed_max_vel_scale", reversedMaxVelScale_, 0.25);
     fts_base_ctrl_nh.param<double>("backwards_max_force_scale", backwardsMaxForceScale_, 0.25);
     fts_base_ctrl_nh.param<double>("backwards_max_vel_scale", backwardsMaxVelScale_, 0.25);
     fts_base_ctrl_nh.param<bool>("x_force_controller", use_controller_[0], false);
@@ -37,6 +46,10 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     fts_base_ctrl_nh.param<double>("rot_max_rot_vel", max_vel_[2], 0.0);
     fts_base_ctrl_nh.param<double>("rot_gain", gain_[2], 1.0);
     fts_base_ctrl_nh.param<double>("rot_time_const", time_const_[2], 1000000.0);
+    
+    default_min_ft_ = min_ft_;
+    default_max_ft_ = max_ft_;
+    default_max_vel_ = max_vel_;
 
     /* Control actions */
     //Adapting center of gravity
@@ -54,10 +67,26 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 
     /* Debug messages */
     // TODO: Is it more convenient to be twist
-    pub_velocity_output_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(ctrl_nh_, "velocity_output", 1);
-    pub_force_input_raw_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(ctrl_nh_, "input_wrench_limited", 1);
+    pub_admittance_velocity_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
+        ctrl_nh_, "admittance_velocity", 1));
+    pub_final_velocity_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
+        ctrl_nh_, "velocity_output", 1));
+    pub_force_input_raw_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
+        ctrl_nh_, "input_wrench_limited", 1));
+    pub_resulting_force_after_counterforce_.reset(
+        new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(
+        ctrl_nh_, "after_counterforce_modality", 1)
+    );
+    
+    /* LED Output */
     pub_input_force_for_led_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(root_nh, "/leds_rectangle/led_force", 1);
-    pub_resulting_force_after_counterforce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(ctrl_nh_, "after_counterforce_modality", 1);
+    led_ac_ = new actionlib::SimpleActionClient<iirob_led::BlinkyAction>("/leds_rectangle/blinky", true);
+    if (led_ac_->waitForServer(ros::Duration(2))) {
+        ROS_DEBUG("[BASE-C - INIT] LED action client registered");
+    }
+    else {
+        ROS_WARN("Action server for LED-Rectangle not started and it will not be used!");
+    }
 
     /* Subscriber */
     //subscriber to the spatial control action for counterforce, which pushes a message with the current distance whenever the robot enters the counterforce area
@@ -114,10 +143,15 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     configure_modalities_srv_ = root_nh.advertiseService("configure_modalities", &FTSBaseController::configureModalitiesCallback, this);
     modalities_loaded_ = false;
     modalities_configured_ = false;
+    
+//     createModalityInstances();
 
     apply_areal_counterforce_ = false;
 
     base_initialized_ = WheelControllerBase::setup(root_nh, wheel_ctrl_nh_);
+
+    diagnostic_.force_update();
+
     return base_initialized_;
 }
 
@@ -127,8 +161,15 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 void FTSBaseController::starting(const ros::Time& time) {
     WheelControllerBase::starting(time);
     controller_started_ = true;
+
+    // Calculate FTS offsets and reset with reorienting wheels
+    std::string lock = "starting";
+    protectedToggleControllerRunning(false, lock);
+    bool ret = unsafeRecalculateFTSOffsets();
+    setOrientWheels(std::array<double, 3>({1, 0, 0}));
     last_controller_time_base_ = time;
-    restartControllerAndOrientWheels(std::array<double, 3>({1, 0, 0}));
+    protectedToggleControllerRunning(ret, lock);
+    setLEDPhase(controller_led_phases::UNLOCKED);
 }
 
 /**
@@ -151,7 +192,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     updateState();
     geom_->calcDirect(platform_state_);
     double platform_vel = std::pow(platform_state_.getVelX(), 2) + std::pow(platform_state_.getVelY(), 2) + std::pow(platform_state_.dRotRobRadS, 2);
-    bool platform_is_moving_ = ( platform_vel > 0.001 );
+    platform_is_moving_ = ( platform_vel > 0.001 );
 //     ROS_WARN_THROTTLE(1, "Base Controller time period between updates is: %f", (time-last_controller_time_base_).toSec());
     last_controller_time_base_ = time;
 
@@ -160,7 +201,8 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     bool running = getRunning();
 
     boost::mutex::scoped_lock controller_internal_states_lock(controller_internal_states_mutex_);
-
+    
+    sendLEDOutput(); // LED output to robot (if LEDPhase has changed or is set to controller_led_phases::SHOW_FORCE)
     if (running and not use_twist_input_) {
         if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
 
@@ -187,35 +229,53 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         // calculate velocity using spring-mass-damping
         for (int i = 0; i < 3; i++) {
             if (!use_controller_[i]) {
-                    ROS_DEBUG_THROTTLE(5, "NO Controller set for Dimension %d", i);
-                    new_vel[i] = 0.0;
+                ROS_DEBUG_THROTTLE(5, "NO Controller set for Dimension %d", i);
+                new_vel[i] = 0.0;
             } else {
                 new_vel[i] = (b1_[i] * force_old_[i] + a1_[i]*velocity_old_[i]); //in scale 0-1
                 force_old_[i] = force_input_[i];
                 velocity_old_[i] = new_vel[i];
                 new_vel[i] *= max_vel_[i]; //scaled back to max vel
                 // stop robot when small velocity
-                if (std::fabs(new_vel[i] ) < 0.001 ) {
+                if (std::fabs(new_vel[i]) < 0.001 ) {
                     new_vel[i] = 0.0;
                 }
             }
         }
+        
+        if (pub_admittance_velocity_->trylock()) {
+            pub_admittance_velocity_->msg_.header.stamp = time;
+            pub_admittance_velocity_->msg_.header.frame_id = controllerFrameId_;
+            pub_admittance_velocity_->msg_.twist.linear.x = new_vel[0];
+            pub_admittance_velocity_->msg_.twist.linear.y = new_vel[1];
+            pub_admittance_velocity_->msg_.twist.angular.z = new_vel[2];
+            pub_admittance_velocity_->unlockAndPublish();
+        }
 
-        //handle special cases for each dimension seperately
-        if ( new_vel[0] < -max_vel_[0]*backwardsMaxVelScale_) new_vel[0] = -max_vel_[0]*backwardsMaxVelScale_; //backwards x scale
-        if (yReversed_) new_vel[1] = -new_vel[1];  //inverse y
-        if (rotReversed_) new_vel[2] = -new_vel[2];  //inverse rotation
+        // handle special cases for each dimension seperately
+        // TODO: Do I want to influence dynamics? if so than the maximal velocities should be changed
+        if ( new_vel[0] < -max_vel_[0]*backwardsMaxVelScale_) {
+            new_vel[0] = -max_vel_[0]*backwardsMaxVelScale_; //backwards x scale
+        }
+        if (yReversed_) {
+            new_vel[1] = -new_vel[1];  //inverse y
+        }
+        if (rotReversed_) {
+            new_vel[2] = -new_vel[2];  //inverse rotation
+        }
 
         delta_vel_ = std::pow(new_vel[0], 2) + std::pow(new_vel[1], 2) + std::pow(new_vel[2], 2);
 
+        //apply modalities
+        if (modalities_used_ != none && userIsGripping()) new_vel = applyModalities(new_vel); 
 
-        if (modalities_used_ != none && userIsGripping()) new_vel = applyModalities(new_vel); //apply modalities
-
-        if (pub_velocity_output_->trylock()) {
-            pub_velocity_output_->msg_.x = new_vel[0];
-            pub_velocity_output_->msg_.y = new_vel[1];
-            pub_velocity_output_->msg_.z = new_vel[2];
-            pub_velocity_output_->unlockAndPublish();
+        if (pub_final_velocity_->trylock()) {
+            pub_final_velocity_->msg_.header.stamp = time;
+            pub_final_velocity_->msg_.header.frame_id = controllerFrameId_;
+            pub_final_velocity_->msg_.twist.linear.x = new_vel[0];
+            pub_final_velocity_->msg_.twist.linear.y = new_vel[1];
+            pub_final_velocity_->msg_.twist.angular.z = new_vel[2];
+            pub_final_velocity_->unlockAndPublish();
         }
 
         if (no_hw_output_) {
@@ -279,6 +339,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         steer_joints_[i].setCommand(wheel_commands_[i].dVelGearSteerRadS);
         drive_joints_[i].setCommand(wheel_commands_[i].dVelGearDriveRadS);
     }
+    diagnostic_.update();
 }
 
 /**
@@ -294,7 +355,7 @@ void FTSBaseController::stopping(const ros::Time& /*time*/) {
 */
 void FTSBaseController::restartController()
 {
-    double lock = (ros::Time::now() - ros::Duration(299*24*60*60)).toSec();
+    std::string lock = "restart_controller";
     protectedToggleControllerRunning(false, lock);
     protectedToggleControllerRunning(true, lock);
 
@@ -302,7 +363,7 @@ void FTSBaseController::restartController()
 
 void FTSBaseController::resetController()
 {
-    double lock = (ros::Time::now() - ros::Duration(306*24*60*60)).toSec();
+    std::string lock = "reset_controller";
     protectedToggleControllerRunning(false, lock);
     setOrientWheels({1, 0, 0});
 //     bool ret = unsafeRecalculateFTSOffsets();
@@ -313,7 +374,7 @@ void FTSBaseController::resetController()
 //TODO: Temp function should be renamed to resetController, when all child classes are clarified
 void FTSBaseController::resetControllerNew()
 {
-    double lock = (ros::Time::now() - ros::Duration(311*24*60*60)).toSec();
+    std::string lock = "reset_controller_new";
     protectedToggleControllerRunning(false, lock);
     protectedToggleControllerRunning(true, lock);
 
@@ -321,7 +382,7 @@ void FTSBaseController::resetControllerNew()
 
 void FTSBaseController::restartControllerAndOrientWheels(std::array<double,3> direction)
 {
-    double lock = (ros::Time::now() - ros::Duration(323*24*60*60)).toSec();
+    std::string lock = "restart_controller_and_orient_wheels";
     protectedToggleControllerRunning(false, lock);
     setOrientWheels(direction);
     protectedToggleControllerRunning(true, lock);
@@ -329,7 +390,7 @@ void FTSBaseController::restartControllerAndOrientWheels(std::array<double,3> di
 
 std::string FTSBaseController::setUseTwistInput(bool use_twist_input)
 {
-    double lock = (ros::Time::now() - ros::Duration(331*24*60*60)).toSec();
+    std::string lock = "set_use_twist_input";
     protectedToggleControllerRunning(false, lock);
     std::string message = internalSetUseTwistInput(use_twist_input);
     protectedToggleControllerRunning(true, lock);
@@ -337,48 +398,39 @@ std::string FTSBaseController::setUseTwistInput(bool use_twist_input)
 }
 
 /* ______CONTROLLER RUNNING CONTROL_______*/
-void FTSBaseController::protectedToggleControllerRunning(const bool value, const double locking_number)
+void FTSBaseController::protectedToggleControllerRunning(const bool start_stop, const std::string locking_string)
 {
     if (!controller_started_) {
         return;
     }
     boost::mutex::scoped_lock lock(locking_mutex_);
-    if (!value) {
-        stopController();
-        // 1st
-        ROS_WARN_COND(locking_number_ == -1, "Running Control: Current Locking nr. not set - locking!");
-        ROS_WARN("Requested Locking Nr: '%f'", locking_number);
-        // 2nd
-        ROS_WARN_COND(locking_number_ == locking_number, "Requested Unlocking without start the controller!");
-        locking_number_ = locking_number;
+    if (!start_stop) {
+        ROS_DEBUG("Requested Locking Nr: '%s'", locking_string.c_str());
+        if (locking_string_.compare(LOCKING_NONE) == 0) {
+            ROS_DEBUG("Running Control: Current Locking not set - locking!");
+            locking_string_ = locking_string;
+            stopController();
+        } else if (locking_string_.compare(locking_string) == 0) {
+            ROS_WARN("Requested Unlocking without start the controller!");
+            locking_string_ = LOCKING_NONE;
+        } else {
+            ROS_FATAL("Request lock for not allowed '%s'; allowed key is %s",
+                      locking_string.c_str(), locking_string_.c_str());
+        }
     }
-    if (value) {
-        startController();
-        ROS_WARN_COND(locking_number_ == locking_number, "Request unlock for '%f' - unlocking!", locking_number);
-
-        ROS_FATAL_COND(locking_number_ == -1, "Trying to unlock not locked toggle!");
-
-        ROS_FATAL_COND((locking_number_ != -1 && locking_number_ != locking_number), "Request unlock for not allowed '%f'; allowed number is %f", locking_number, locking_number_);
+    if (start_stop) {
+        if (locking_string_.compare(locking_string) == 0) {
+            ROS_DEBUG("Request unlock for '%s' - unlocking!", locking_string.c_str());
+            locking_string_ = LOCKING_NONE;
+            startController();
+        } else if (locking_string_.compare(LOCKING_NONE) == 0) {
+            ROS_WARN("Trying to unlock not locked toggle!");
+        } else {
+            ROS_FATAL("Request unlock for not allowed '%s'; allowed key is %s",
+                      locking_string.c_str(), locking_string_.c_str());
+        }
     }
-
-//     if (!value && locking_number_ == -1) { // stop controller and lock
-//         stopController();
-//         locking_number_ = locking_number;
-//         ROS_INFO("Running Control: Locking nr: '%f'", locking_number);
-//     } else if(!value && locking_number_ == locking_number) { // unlock without starting when a issue happens
-//         stopController();
-//         locking_number_ = -1;
-//         ROS_ERROR("Running Control: Releasing without starting controller! An issue happend, check it an restart controller manually! Releasing nr: '%f'", locking_number);
-//     } else if (value && locking_number_ == locking_number) { // start controller and unlock
-//         startController();
-//         locking_number_ = -1;
-//         ROS_INFO("Running Control: Releasing nr: '%f'", locking_number);
-//     }
-//     else if (value && locking_number_ == -1) {
-//         ROS_FATAL("Trying to unlock not locked toggle!");
-//     } else if (locking_number_ != locking_number) {
-//         ROS_FATAL("Access denied: Controller Toggle is locked!");
-//     }
+    diagnostic_.force_update();
 }
 
 /**
@@ -445,6 +497,42 @@ std::string FTSBaseController::internalSetUseTwistInput(bool use_twist_input) {
     return message;
 }
 
+void FTSBaseController::internalSetNoHWOutput(bool no_hw_output) {
+    boost::mutex::scoped_try_lock lock(controller_internal_states_mutex_);
+    while (!lock) {
+        lock.try_lock();
+    }
+    no_hw_output_ = no_hw_output;
+
+    std::string message = "RoboTrainer Controller will be output to hardware!";
+    if (no_hw_output_) {
+        std::string message = "RoboTrainer Controller will NOT be output to hardware!";
+    }
+    ROS_DEBUG("%s", message.c_str());
+}
+
+/// \brief Publishes diagnostics and status
+void FTSBaseController::diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status)
+{
+    if (getRunning()) {
+        status.summary(0, "Controller is running");
+    } else {
+        status.summary(1, "Cotroller is not running");
+    }
+
+    status.add("running", getRunning());
+    status.add("can be running", getCanBeRunning());
+    status.add("lock", locking_string_);
+    status.add("user is gripping", userIsGripping());
+    status.add("platform is moving", platform_is_moving_);
+    status.add("use twist input", use_twist_input_);
+    status.add("no hardware output", no_hw_output_);
+    status.add("modalities used", modalities_used_);
+    status.add("adapt center of gravity", adapt_center_of_gravity_);
+    status.add("orient wheels", orient_wheels_);
+    status.add("controller frame id", controllerFrameId_);
+}
+
 /*_____PROTECTED GETTERS AND SETTERS_____*/
 
 void FTSBaseController::setRunning(bool value)
@@ -495,10 +583,13 @@ bool FTSBaseController::createModalityInstances() {
  */
 bool FTSBaseController::createBaseModalityInstances() {
 
-    pluginlib::ClassLoader<robotrainer_modalities::ModalityBase<geometry_msgs::Twist>> modalities_loader("robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>");
+//     pluginlib::ClassLoader<robotrainer_modalities::ModalityBase<geometry_msgs::Twist>> modalities_loader("robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>");
+    modalities_loader_.reset(new pluginlib::ClassLoader<
+      robotrainer_modalities::ModalityBase<geometry_msgs::Twist>>(
+          "robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>"));
     //Virtual Force
     try {
-        force_modality_ptr_ = modalities_loader.createInstance("robotrainer_modalities/VirtualForces");
+        force_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualForces");
         ROS_INFO_ONCE("[fts_base_controller.cpp] Force_Modality loaded");
     } catch(pluginlib::PluginlibException& e) {
         ROS_ERROR_STREAM("[fts_base_controller.cpp] Force_Modality plugin failed to load:" << e.what());
@@ -506,7 +597,7 @@ bool FTSBaseController::createBaseModalityInstances() {
     }
     //Walls
     try {
-        walls_modality_ptr_ = modalities_loader.createInstance("robotrainer_modalities/VirtualWalls");
+        walls_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualWalls");
         ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Modality loaded");
     } catch(pluginlib::PluginlibException& e) {
         ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Modality plugin failed to load:" << e.what());
@@ -514,7 +605,7 @@ bool FTSBaseController::createBaseModalityInstances() {
     }
     //Path Tracking
     try {
-        pathtracking_modality_ptr_ = modalities_loader.createInstance("robotrainer_modalities/PathTracking");
+        pathtracking_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/PathTracking");
         ROS_INFO_ONCE("[fts_base_controller.cpp] PathTracking_Modality loaded");
     } catch(pluginlib::PluginlibException& e) {
         ROS_ERROR_STREAM("[fts_base_controller.cpp] PathTracking_Modality plugin failed to load:" << e.what());
@@ -522,7 +613,7 @@ bool FTSBaseController::createBaseModalityInstances() {
     }
     //Virtual Area
     try {
-        area_modality_ptr_ = modalities_loader.createInstance("robotrainer_modalities/VirtualAreas");
+        area_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualAreas");
         ROS_INFO_ONCE("[fts_base_controller.cpp] Areas_Modality loaded");
     } catch(pluginlib::PluginlibException& e) {
         ROS_ERROR_STREAM("[fts_base_controller.cpp] Areas_Modality plugin failed to load:" << e.what());
@@ -536,10 +627,14 @@ bool FTSBaseController::createBaseModalityInstances() {
  */
 bool FTSBaseController::createControllerModalityInstances() {
 
-    pluginlib::ClassLoader<robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>> modality_controllers_loader("robotrainer_modalities", "robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>");
+//     pluginlib::ClassLoader<robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>> modality_controllers_loader("robotrainer_modalities", "robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>");
+    modality_controllers_loader_.reset(new pluginlib::ClassLoader<
+      robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>>(
+        "robotrainer_modalities",
+        "robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>"));
     //force_controller
     try {
-        force_controller_modality_ptr_ = modality_controllers_loader.createInstance("robotrainer_modalities/ModalitiesVirtualForcesController");
+        force_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualForcesController");
         ROS_INFO_ONCE("[fts_base_controller.cpp] Force_Controller_Modality loaded");
     }
     catch(pluginlib::PluginlibException& e) {
@@ -548,7 +643,7 @@ bool FTSBaseController::createControllerModalityInstances() {
     }
     //virtual_walls_controller
     try {
-        walls_controller_modality_ptr_ = modality_controllers_loader.createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
+        walls_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
         ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Controller_Modality loaded");
     }
     catch(pluginlib::PluginlibException& e) {
@@ -557,7 +652,7 @@ bool FTSBaseController::createControllerModalityInstances() {
     }
     //path_tracking_controller
     try {
-        pathtracking_controller_modality_ptr_ = modality_controllers_loader.createInstance("robotrainer_modalities/ModalitiesPathTrackingController");
+        pathtracking_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesPathTrackingController");
         ROS_INFO_ONCE("[fts_base_controller.cpp] Pathtracking_Controller_Modality loaded");
     }
     catch(pluginlib::PluginlibException& e) {
@@ -580,12 +675,12 @@ bool FTSBaseController::createControllerModalityInstances() {
 bool FTSBaseController::configureModalities() {
 
     if (!modalities_loaded_  && !createModalityInstances() ) {
-            ROS_WARN("Modalities could not be configured as they cannot be loaded by the pluginClassLoader!");
-            return false;
+        ROS_WARN("Modalities could not be configured as they cannot be loaded by the pluginClassLoader!");
+        return false;
     } else {
-            modalities_configured_ = ( configureBaseModalities() && configureControllerModalities() );
-            ROS_INFO_COND(modalities_configured_, "All modalities were successfully configured!");
-            return modalities_configured_;
+        modalities_configured_ = ( configureBaseModalities() && configureControllerModalities() );
+        ROS_INFO_COND(modalities_configured_, "All modalities were successfully configured!");
+        return modalities_configured_;
     }
 }
 
@@ -680,7 +775,7 @@ bool FTSBaseController::updateWheelParamsCallback(std_srvs::Trigger::Request &re
 * \brief Callback function for service "configure_modalities"
 */
 bool FTSBaseController::configureModalitiesCallback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp) {
-        ROS_DEBUG("ConfigureModalitiesCallback called");
+    ROS_DEBUG("ConfigureModalitiesCallback called");
     return configureModalities();
 }
 
@@ -842,6 +937,15 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     if (!controller_started_) {
         return;
     }
+    
+    // Update values in GUI only
+    config.x_damping = calculatevirtualdamping(config.x_max_force, config.x_max_vel, config.x_gain);
+    config.x_mass = calculatevirtualmass(config.x_time_const, config.x_damping);    
+    config.y_damping = calculatevirtualdamping(config.y_max_force, config.y_max_vel, config.y_gain);
+    config.y_mass = calculatevirtualmass(config.y_time_const, config.y_damping);    
+    config.rot_damping = calculatevirtualdamping(config.rot_max_torque, config.rot_max_rot_vel, config.rot_gain);
+    config.rot_intertia = calculatevirtualmass(config.rot_time_const, config.rot_damping);
+    
     // First check if anything changed, if not go out an do not stop controller
     bool needs_processing = config.reset_controller || config.recalculate_FTS_offsets ||
             no_hw_output_ != config.no_hw_output || use_twist_input_ != config.use_twist_input ||
@@ -866,16 +970,16 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         return;
     }
 
-    double lock = (ros::Time::now() - ros::Duration(845*24*60*60)).toSec();
+    std::string lock = "reconfigure_callback";
     protectedToggleControllerRunning(false, lock);
 
     if (no_hw_output_ != config.no_hw_output) {
-        no_hw_output_ = config.no_hw_output;
+        internalSetNoHWOutput(config.no_hw_output);
         ROS_WARN_COND(!no_hw_output_, "[FTS_Base]: Simulation OFF - Robot _will_ move");
         ROS_WARN_COND(no_hw_output_, "[FTS_Base]: Simulation ON - Robot _will not_ move!!!");
     }
     if (use_twist_input_ != config.use_twist_input) {
-        setUseTwistInput(config.use_twist_input);
+        internalSetUseTwistInput(config.use_twist_input);
     }
 
     if (config.apply_base_controller_params) {
@@ -894,10 +998,13 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         max_ft_[1] = config.y_max_force;
         min_ft_[2] = config.rot_min_torque;
         max_ft_[2] = config.rot_max_torque;
+        default_min_ft_ = min_ft_;
+        default_max_ft_ = max_ft_;
         // velocity limits
         max_vel_[0] = config.x_max_vel;
         max_vel_[1] = config.y_max_vel;
         max_vel_[2] = config.rot_max_rot_vel;
+        default_max_vel_ = max_vel_;
         // controller parameters
         gain_[0] = config.x_gain;
         time_const_[0] = config.x_time_const;
@@ -905,6 +1012,8 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         time_const_[1] = config.y_time_const;
         gain_[2] = config.rot_gain;
         time_const_[2] = config.rot_time_const;
+        backwardsMaxForceScale_ = config.backwards_max_force_scale;
+        backwardsMaxVelScale_ = config.backwards_max_vel_scale;
         config.apply_base_controller_params = false;
     }
 
@@ -936,10 +1045,24 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         }
 
         //global modalities
+        reversedMaxForceScale_ = config.reversed_max_force_scale;
+        reversedMaxVelScale_ = config.reversed_max_vel_scale;
         yReversed_ = config.y_reversed;
+        if (yReversed_) {
+            setMaxFtAxis(1, default_max_ft_[1]*reversedMaxForceScale_);
+            setMaxVelAxis(1, default_max_vel_[1]*reversedMaxVelScale_);
+        } else {
+            setMaxFtAxis(1, default_max_ft_[1]);
+            setMaxVelAxis(1, default_max_vel_[1]);
+        }
         rotReversed_ = config.rot_reversed;
-        backwardsMaxForceScale_ = config.backwards_max_force_scale;
-        backwardsMaxVelScale_ = config.backwards_max_vel_scale;
+        if (rotReversed_) {
+            setMaxFtAxis(2, default_max_ft_[2]*reversedMaxForceScale_);
+            setMaxVelAxis(2, default_max_vel_[2]*reversedMaxVelScale_);
+        } else {
+            setMaxFtAxis(2, default_max_ft_[2]);
+            setMaxVelAxis(2, default_max_vel_[2]);
+        }
         enableCounterForce_ = config.enable_counter_force;
         if (enableCounterForce_) {
             staticCounterForce_[0] = config.counter_force_x;
@@ -959,6 +1082,16 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     base_reconfigured_flag_ = true;
 
     protectedToggleControllerRunning(true, lock);
+}
+
+double FTSBaseController::calculatevirtualdamping(double maxforce, double maxvelocity, double gain)
+{
+    return (maxforce/maxvelocity) * (1/gain);
+}
+
+double FTSBaseController::calculatevirtualmass(double timeconstant, double damping)
+{
+    return timeconstant*damping;
 }
 
 
@@ -1059,11 +1192,17 @@ std::array<double, 3> FTSBaseController::getFTSInput( const ros::Time& time ) {
         timeSinceReleasing_ = time + ros::Duration(1.0);
     }
 //         lock.release();
-    forceInputToLed( force_input );
+    forceInputForLED_ = force_input;
+//     forceInputToLed( force_input );
     if (!getRunning()) {
         raw_fts_input = zeroForce_;
     }
     return raw_fts_input;
+}
+
+void FTSBaseController::sendLEDForceTopics()
+{
+    forceInputToLed(forceInputForLED_);
 }
 
 void FTSBaseController::forceInputToLed( const geometry_msgs::WrenchStamped force_input ) {
@@ -1193,23 +1332,30 @@ void FTSBaseController::setMaxFt(std::array<double,3> max_ft_for_control) {
     max_ft_[2] = max_ft_for_control[2];
 }
 
+void FTSBaseController::setMaxFtAxis(uint axis, double max_ft_for_control) {
+    max_ft_[axis] = max_ft_for_control;
+}
+
 /**
 * \brief sets the global maximum velocity, to which the force is scaled
 */
 void FTSBaseController::setMaxVel(std::array<double,3> max_vel_for_control) {
-        max_vel_[0] = max_vel_for_control[0];
-        max_vel_[1] = max_vel_for_control[1];
-        max_vel_[2] = max_vel_for_control[2];
+    max_vel_[0] = max_vel_for_control[0];
+    max_vel_[1] = max_vel_for_control[1];
+    max_vel_[2] = max_vel_for_control[2];
+}
+
+void FTSBaseController::setMaxVelAxis(uint axis, double max_vel_for_control) {
+    max_vel_[axis] = max_vel_for_control;
 }
 
 /**
 * \brief sets which controller dimensions are active
 */
 void FTSBaseController::setActiveDimensions(std::array<bool, 3> enable_controller_dimension) {
-
-        use_controller_[0] = enable_controller_dimension[0];
-        use_controller_[1] = enable_controller_dimension[1];
-        use_controller_[2] = enable_controller_dimension[2];
+    use_controller_[0] = enable_controller_dimension[0];
+    use_controller_[1] = enable_controller_dimension[1];
+    use_controller_[2] = enable_controller_dimension[2];
 }
 
 /**
@@ -1218,7 +1364,7 @@ void FTSBaseController::setActiveDimensions(std::array<bool, 3> enable_controlle
 bool FTSBaseController::recalculateFTSOffsets()
 {
 
-    double lock = (ros::Time::now() - ros::Duration(1163*24*60*60)).toSec();
+    std::string lock = "recalculate_FTS_offsets";
     protectedToggleControllerRunning(false, lock);
 
     bool ret = unsafeRecalculateFTSOffsets();
@@ -1241,5 +1387,43 @@ geometry_msgs::Vector3 FTSBaseController::convertToMessage( std::array<double,3>
 }
 
 
+
+/*_______LED STUFF______*/
+/**
+ * \brief Sets the LED phase (used for LED feedback messages)
+ */
+
+bool FTSBaseController::setLEDPhase(controller_led_phases requestPhase) {
+
+    if (currentLEDPhase_ != requestPhase) { // to prevent from same message being shown multiple times
+        led_ac_->cancelGoalsAtAndBeforeTime(ros::Time::now());
+        currentLEDPhase_ = requestPhase;
+        sendLEDGoal_ = true;
+        ROS_DEBUG("LED PHASE HAS CHANGED!");
+        return true;
+    }
+    return false;
 }
-PLUGINLIB_EXPORT_CLASS(robotrainer_controllers::FTSBaseController, controller_interface::ControllerBase)
+
+/**
+ * \brief sends the LED output which is defined by the currently active led_phase_ enum
+ */
+void FTSBaseController::sendLEDOutput() {
+
+    if (currentLEDPhase_ == controller_led_phases::SHOW_FORCE) {
+        sendLEDForceTopics();
+        sendLEDGoal_ = false;
+    } else if (sendLEDGoal_) {
+        sendLEDGoal_ = false; //to only send it once the phase has changed
+        if (currentLEDPhase_ == controller_led_phases::UNLOCKED) {
+            setLEDPhase(controller_led_phases::SHOW_FORCE);
+            ledGoalToSend_ = blinky_goals_.blinkyFreeMovementBlue_;
+        }
+        led_ac_->sendGoal(ledGoalToSend_);
+    }
+}
+
+}  // namespce robotrainer_controllers
+
+PLUGINLIB_EXPORT_CLASS(
+    robotrainer_controllers::FTSBaseController, controller_interface::ControllerBase)

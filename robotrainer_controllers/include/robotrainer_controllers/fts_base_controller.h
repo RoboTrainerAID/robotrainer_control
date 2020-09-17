@@ -4,6 +4,11 @@
 
 #include <thread>
 
+#include <actionlib/client/simple_action_client.h>
+#include <diagnostic_updater/diagnostic_updater.h>
+#include <iirob_led/BlinkyAction.h>
+#include "robotrainer_controllers/fts_controllers_led_defines.hpp"
+
 #include "robotrainer_controllers/fts_wheelControllerBase.h"
 #include "robotrainer_controllers/fts_GeomController.h"
 #include "robotrainer_controllers/FTSBaseControllerConfig.h"
@@ -23,6 +28,7 @@
 #include <std_srvs/Trigger.h>
 #include <pluginlib/class_list_macros.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/WrenchStamped.h>
 //FIXME: remove this tf stuff?
 #include <tf/transform_datatypes.h>
@@ -41,6 +47,8 @@
 #include <dynamic_reconfigure/Config.h>
 
 #include <realtime_tools/realtime_publisher.h>
+
+// TODO(GLOBAL):  use smart pointers
 
 // #include <std::runtime
 
@@ -164,12 +172,17 @@ public:
 class FTSBaseController : public WheelControllerBase<GeomController<UndercarriageCtrl> > {
 
 public:
-    FTSBaseController();
-    virtual bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh);
-    virtual void starting(const ros::Time& time);
-    virtual void update(const ros::Time& time, const ros::Duration& period);
-    virtual void stopping(const ros::Time& /*time*/);
+    FTSBaseController() = default;
+    
     ~FTSBaseController() { delete chain_ptr_;};
+    
+    virtual bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh);
+    
+    virtual void starting(const ros::Time& time);
+    
+    virtual void update(const ros::Time& time, const ros::Duration& period);
+    
+    virtual void stopping(const ros::Time& /*time*/);
 
     class PosCtrl {
         public:
@@ -277,6 +290,10 @@ protected:
 
     // Modalities
     bool modalities_loaded_;
+    std::shared_ptr<pluginlib::ClassLoader<
+      robotrainer_modalities::ModalityBase<geometry_msgs::Twist>>> modalities_loader_;
+    std::shared_ptr<pluginlib::ClassLoader<
+      robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>>> modality_controllers_loader_;
     //pointers to base_modalities
     boost::shared_ptr<robotrainer_modalities::ModalityBase<geometry_msgs::Twist>> force_modality_ptr_;
     boost::shared_ptr<robotrainer_modalities::ModalityBase<geometry_msgs::Twist>> walls_modality_ptr_;
@@ -295,10 +312,29 @@ protected:
     filters::FilterChain<geometry_msgs::Twist>* chain_ptr_ = new filters::FilterChain<geometry_msgs::Twist>("geometry_msgs::Twist"); //Node template type and argument must match
     bool modalities_chain_configured_;
     //debug
-    realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_velocity_output_;
-    realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> *pub_force_input_raw_, *pub_input_force_for_led_;
-    realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_resulting_force_after_counterforce_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> 
+        pub_admittance_velocity_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> 
+        pub_final_velocity_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> 
+        pub_force_input_raw_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>>
+        pub_resulting_force_after_counterforce_;
 
+    // LEDS
+    realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> *pub_input_force_for_led_;
+    actionlib::SimpleActionClient<iirob_led::BlinkyAction> *led_ac_;
+
+    controller_led_phases led_phase_, currentLEDPhase_ = controller_led_phases::UNDEFINED;
+    LedBlinkyGoals blinky_goals_;
+    bool sendLEDGoal_;
+    double ledForceInput_;
+    iirob_led::BlinkyGoal ledGoalToSend_;
+    
+    //debug LED
+    bool debug_led_on_;
+    
+    // TODO: These here should be private... and moved to the global CA implementation
     //counter force modality
     std::array<double,3> staticCounterForce_ = {{0.0, 0.0, 0.0}};
     //adaptable center of gravity modality
@@ -341,17 +377,22 @@ protected:
     // Basic parameters
     bool no_hw_output_;
     bool use_twist_input_;
+    // TODO: rename this to use proper casing
     double controllerUpdateRate_;
     std::string controllerFrameId_;
 
     // Input parameters
     bool yReversed_, rotReversed_;
     double backwardsMaxForceScale_, backwardsMaxVelScale_;
+    double reversedMaxForceScale_, reversedMaxVelScale_;
 
     std::array<bool, 3> use_controller_;
     std::array<double, 3> min_ft_;
     std::array<double, 3> max_ft_;
     std::array<double, 3> max_vel_;
+    std::array<double, 3> default_min_ft_;
+    std::array<double, 3> default_max_ft_;
+    std::array<double, 3> default_max_vel_;
 
     //admittanceParameters
     std::array<double, 3> gain_;
@@ -372,14 +413,13 @@ protected:
 
 
     double delta_vel_;
-
-
-
-
-    //debug LED
-    bool debug_led_on_;
-
+    
+    geometry_msgs::WrenchStamped forceInputForLED_;
+    
     void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
+    void sendLEDForceTopics();
+    bool setLEDPhase(controller_led_phases requestPhase);
+    void sendLEDOutput();
 
     //controller functions
     void stopController(void);
@@ -390,8 +430,10 @@ protected:
     void discretizeController();
     void discretizeWithNewParameters( std::array<double,3> time_const_for_control, std::array<double,3> gain_for_control);
 
-
     void reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level);
+    
+    double calculatevirtualdamping(double maxforce, double maxvelocity, double gain);
+    double calculatevirtualmass(double timeconstant, double damping);
 
     //getter functions
     std::array<double, 3> getScaledLimitedFTSInput( std::array<double, 3> rawFTSInput );
@@ -412,8 +454,10 @@ protected:
 
     //setter functions
     void setForceInput(std::array<double,3> force_input_for_control);
-    void setMaxVel(std::array<double,3> max_vel_for_control);
     void setMaxFt(std::array<double,3> max_ft_for_control);
+    void setMaxFtAxis(uint axis, double max_ft_for_control);
+    void setMaxVel(std::array<double,3> max_vel_for_control);
+    void setMaxVelAxis(uint axis, double max_vel_for_control);
     void setActiveDimensions(std::array<bool, 3> enable_controller_dimension);
     std::string setUseTwistInput(bool use_twist_input);
 
@@ -427,6 +471,9 @@ protected:
     void setUserIsGripping(bool value);
 
 
+protected:
+    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
+
 private:
     boost::mutex controller_internal_states_mutex_;
     boost::mutex locking_mutex_;
@@ -435,10 +482,13 @@ private:
 
     bool controller_started_;
 
+    diagnostic_updater::Updater diagnostic_;
+
     // Update function variables
     bool running_;
     bool can_be_running_;
     ros::Time last_controller_time_base_;
+    bool platform_is_moving_ = false;
 
     // config variables
     int orient_wheels_;
@@ -453,13 +503,15 @@ private:
     ros::ServiceClient fts_client_;
 
     // Controller running state control
-    double locking_number_;
-    void protectedToggleControllerRunning(const bool value, const double locking_number);
+    const std::string LOCKING_NONE = "--none--";
+    std::string locking_string_ = LOCKING_NONE;
+    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
     void startController(void);
 
     // Protected change of controller internals
     void setOrientWheels(std::array<double,3> direction);
     bool unsafeRecalculateFTSOffsets();
+    void internalSetNoHWOutput(bool no_hw_output);
     std::string internalSetUseTwistInput(bool use_twist_input);
 
     // Mutex-Protected getters and setters
@@ -471,4 +523,4 @@ private:
 };
 
 }  // namespce robotrainer_controllers
-#endif
+#endif  // ROBOTRAINER_CONTROLLERS_FTS_BASE_CONTROLLER_H

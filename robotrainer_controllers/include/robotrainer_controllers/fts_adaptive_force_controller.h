@@ -11,8 +11,6 @@
 
 #include <std_msgs/Float64.h>
 #include <robotrainer_controllers/FTSAdaptiveForceControllerConfig.h>
-#include <actionlib/client/simple_action_client.h>
-#include <iirob_led/BlinkyAction.h>
 #include <std_msgs/ColorRGBA.h>
 #include <geometry_msgs/PointStamped.h>
 
@@ -21,11 +19,15 @@ namespace robotrainer_controllers {
 class FTSAdaptiveForceController : public FTSController {
 
 public:
-    FTSAdaptiveForceController();
+    FTSAdaptiveForceController() = default;
+
+    ~FTSAdaptiveForceController() = default;
+    
     virtual bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh);
+
     virtual void update(const ros::Time& time, const ros::Duration& period);
     void reconfigureCallback(robotrainer_controllers::FTSAdaptiveForceControllerConfig &config, uint32_t level);
-    ~FTSAdaptiveForceController() { delete chain_ptr_;};
+
 
 protected:
     // Getters and setters to protect concurency of multiple threads
@@ -130,7 +132,6 @@ private:
     double maxLegDistance_;
     double adaptive_parametrization_adaptionRate_; // value from 1.0 to 3.0, how fast big changes affect the scale change (1.0 meaning linear rate)
 
-
     double returnForce_x_;
     double returnForce_y_;
     double returnForce_rot_;
@@ -160,40 +161,6 @@ private:
     std::array<double, 3> force_scale_minvel_;
     std::array<double, 3> force_scale_maxvel_;
 
-    // LED
-    actionlib::SimpleActionClient<iirob_led::BlinkyAction> *led_ac_;
-    enum led_phase_{ undefined, unlocked, waitForInput, walkForward, walkBackwards, almostReturned, phaseFinished, stepAwayFromRobot, robotInAutomaticMovement, showForce,  showAdapted };
-    led_phase_ currentLEDPhase_ = undefined;
-
-    //general LED goals:
-    iirob_led::BlinkyGoal blinkyStartGreen_;
-    iirob_led::BlinkyGoal blinkyPhaseYellow_;
-    iirob_led::BlinkyGoal blinkyFinishedRed_;
-    iirob_led::BlinkyGoal blinkyFreeMovementBlue_;
-    iirob_led::BlinkyGoal blinkyStepAway_;
-    // dimension dependant goals:
-    iirob_led::BlinkyGoal blinkyStart_x_;
-    iirob_led::BlinkyGoal blinkyStart_x_back_;
-    iirob_led::BlinkyGoal blinkyStart_y_left_;
-    iirob_led::BlinkyGoal blinkyStart_y_right_;
-    iirob_led::BlinkyGoal blinkyStart_rot_left_;
-    iirob_led::BlinkyGoal blinkyStart_rot_right_;
-    //legDistance and adaptX goals:
-    iirob_led::BlinkyGoal blinkyWalkForward_;
-    iirob_led::BlinkyGoal blinkyWalkBackwards_;
-    iirob_led::BlinkyGoal blinkyAlmostFinishedRed_;
-    //Automatic movement
-    iirob_led::BlinkyGoal blinkyRobotAutomaticMovement_;
-    iirob_led::BlinkyGoal blinkyRobotAutomaticMovement_x_;
-    iirob_led::BlinkyGoal blinkyRobotAutomaticMovement_y_left_;
-    iirob_led::BlinkyGoal blinkyRobotAutomaticMovement_y_right_;
-    iirob_led::BlinkyGoal blinkyRobotAutomaticMovement_rot_left_;
-    iirob_led::BlinkyGoal blinkyRobotAutomaticMovement_rot_right_;
-
-    //LED-Related
-    bool sendLEDGoal_;
-    double ledForceInput_;
-
     boost::mutex leg_track_update_mutex_;
     boost::shared_mutex switch_step_update_mutex_;
 
@@ -203,7 +170,6 @@ private:
     void updateTravelledDistance();
     void resetTravelledDistance();
 
-    void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
 
     std::array<double, 3> baseForceTest(std::array<double, 3> fts_input_raw); // virtual spring test for various directions
     void resetBaseForceTest();
@@ -221,9 +187,9 @@ private:
 
     std::array<double, 3> scaleBetweenValues(std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor);
 
+    void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
     void sendLEDForceTopics();
-    void setLEDPhase(led_phase_ requestedPhase);
-    void sendLEDOutput();
+    bool setLEDPhase(controller_led_phases requestedPhase);
     void sendDebugTopicsParamBase(double travelledDist, double averageDist, double raw_input, double currentVirtSpringForce, double effectiveForce);
     void sendDebugTopicsParamAdaptX(double currentScale, double robotDistDiff);
 
