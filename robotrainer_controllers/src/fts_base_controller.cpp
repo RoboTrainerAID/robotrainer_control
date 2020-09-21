@@ -12,13 +12,14 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     ros::NodeHandle wheels_nh(root_nh, "wheel_controller");
     wheel_ctrl_nh_ = wheels_nh;
 
-    diagnostic_.add("RoboTrainer Controller Status", this, &FTSBaseController::diagnostics);
+    diagnostic_.add("RoboTrainer Controller - Base", this, &FTSBaseController::diagnostics);
     diagnostic_.setHardwareID("FTS_Base_Controller");
     diagnostic_.broadcast(0, "Initializing FTS Base Controller");
 
     /* get Parameters from rosparam server (stored on yaml file) */
     ros::NodeHandle fts_base_ctrl_nh(ctrl_nh_, "FTSBaseController");
     fts_base_ctrl_nh.param<bool>("no_hw_output", no_hw_output_, true);
+    fts_base_ctrl_nh.param<bool>("debug", debug_, false);
     fts_base_ctrl_nh.param<bool>("use_twist_input", use_twist_input_, false);
     fts_base_ctrl_nh.param<double>("update_rate", controllerUpdateRate_, 1.0);
     fts_base_ctrl_nh.param<std::string>("frame_id", controllerFrameId_, "base_link");
@@ -52,10 +53,10 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     default_max_vel_ = max_vel_;
 
     /* Control actions */
-    //Adapting center of gravity
-    fts_base_ctrl_nh.param<bool>("global_control_actions/adaptive_cog/adapt_cog", adapt_center_of_gravity_, false);
-    fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cog/cog_x", cog_x_, 0.0);
-    fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cog/cog_y", cog_y_, 0.0);
+    //Adapting center of rotation
+    fts_base_ctrl_nh.param<bool>("global_control_actions/adaptive_cor/adapt_cor", adapt_center_of_rotation_, false);
+    fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cor/cor_x", cor_x_, 0.0);
+    fts_base_ctrl_nh.param<double>("global_control_actions/adaptive_cor/cor_y", cor_y_, 0.0);
     //global counterforce enabled by default
     fts_base_ctrl_nh.param<bool>("global_control_actions/global_counterforce/enabled", enableCounterForce_, false);
     fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_x", staticCounterForce_[0], 0.0);
@@ -66,21 +67,29 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     base_reconfigured_flag_ = false;
 
     /* Debug messages */
-    // TODO: Is it more convenient to be twist
-    pub_admittance_velocity_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
-        ctrl_nh_, "admittance_velocity", 1));
+    pub_admittance_velocity_.reset(
+        new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
+        ctrl_nh_, "debug/admittance_velocity", 1));
     pub_final_velocity_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
-        ctrl_nh_, "velocity_output", 1));
+        ctrl_nh_, "debug/velocity_output", 1));
     pub_force_input_raw_.reset(new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
-        ctrl_nh_, "input_wrench_limited", 1));
+        ctrl_nh_, "debug/force_input_raw", 1));
+    pub_force_input_scaled_limited_.reset(
+        new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
+        ctrl_nh_, "debug/force_input_scaled_limited", 1));
     pub_resulting_force_after_counterforce_.reset(
-        new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(
-        ctrl_nh_, "after_counterforce_modality", 1)
-    );
+        new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
+        ctrl_nh_, "debug/after_counterforce_modality", 1));
+    pub_resulting_force_after_cor_.reset(
+        new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
+        ctrl_nh_, "debug/after_cor_modality", 1));
     
     /* LED Output */
-    pub_input_force_for_led_ = new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(root_nh, "/leds_rectangle/led_force", 1);
-    led_ac_ = new actionlib::SimpleActionClient<iirob_led::BlinkyAction>("/leds_rectangle/blinky", true);
+    pub_input_force_for_led_.reset(
+        new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
+        root_nh, "/leds_rectangle/led_force", 1));
+    led_ac_.reset(new actionlib::SimpleActionClient<iirob_led::BlinkyAction>(
+        "/leds_rectangle/blinky", true));
     if (led_ac_->waitForServer(ros::Duration(2))) {
         ROS_DEBUG("[BASE-C - INIT] LED action client registered");
     }
@@ -88,6 +97,11 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
         ROS_WARN("Action server for LED-Rectangle not started and it will not be used!");
     }
 
+    /* For Users GUI */
+    pub_input_force_force_for_gui_.reset(
+        new realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>(
+            root_nh, "force_for_gui", 1));
+    
     /* Subscriber */
     //subscriber to the spatial control action for counterforce, which pushes a message with the current distance whenever the robot enters the counterforce area
     counterforce_area_sub_ = root_nh.subscribe("virtual_areas/counterforce/center_dist_percent", 10, &FTSBaseController::counterforce_area_callback, this);
@@ -205,26 +219,29 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     sendLEDOutput(); // LED output to robot (if LEDPhase has changed or is set to controller_led_phases::SHOW_FORCE)
     if (running and not use_twist_input_) {
         if ( force_input_[0] < -max_ft_[0]*backwardsMaxForceScale_) force_input_[0] = -max_ft_[0]*backwardsMaxForceScale_;
+        
+        if (debug_) {
+            convertToWrenchAndPublish(time, force_input_, pub_force_input_scaled_limited_);
+        }
 
 //                 TODO: This should go into a modality
         if (enableCounterForce_ && userIsGripping() ) {
             force_input_ = applyGlobalCounterforce(force_input_);
-            if (pub_resulting_force_after_counterforce_->trylock()) {
-                pub_resulting_force_after_counterforce_->msg_ = convertToMessage(force_input_);
-                pub_resulting_force_after_counterforce_->unlockAndPublish();
-            }
-        } else if (apply_areal_counterforce_) {
-            if (userIsGripping()) {
-                force_input_ = applyAreaCounterforce(force_input_);
-                if (pub_resulting_force_after_counterforce_->trylock()) {
-                    pub_resulting_force_after_counterforce_->msg_ = convertToMessage(force_input_);
-                    pub_resulting_force_after_counterforce_->unlockAndPublish();
-                }
-            }
+        } else if (apply_areal_counterforce_ && userIsGripping()) {
+            force_input_ = applyAreaCounterforce(force_input_);
             apply_areal_counterforce_ = false;
         }
+        
+        if (debug_) {
+            convertToWrenchAndPublish(time, force_input_, pub_resulting_force_after_counterforce_);
+        }
 
-        if (adapt_center_of_gravity_ && userIsGripping()) force_input_ = adaptCenterOfGravity(force_input_);
+        if (adapt_center_of_rotation_ && userIsGripping()) {
+            force_input_ = adaptCenterOfRotation(force_input_);
+        }
+        if (debug_) {
+            convertToWrenchAndPublish(time, force_input_, pub_resulting_force_after_cor_);
+        }
 
         // calculate velocity using spring-mass-damping
         for (int i = 0; i < 3; i++) {
@@ -243,13 +260,15 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
             }
         }
         
-        if (pub_admittance_velocity_->trylock()) {
-            pub_admittance_velocity_->msg_.header.stamp = time;
-            pub_admittance_velocity_->msg_.header.frame_id = controllerFrameId_;
-            pub_admittance_velocity_->msg_.twist.linear.x = new_vel[0];
-            pub_admittance_velocity_->msg_.twist.linear.y = new_vel[1];
-            pub_admittance_velocity_->msg_.twist.angular.z = new_vel[2];
-            pub_admittance_velocity_->unlockAndPublish();
+        if (debug_) {
+            if (pub_admittance_velocity_->trylock()) {
+                pub_admittance_velocity_->msg_.header.stamp = time;
+                pub_admittance_velocity_->msg_.header.frame_id = controllerFrameId_;
+                pub_admittance_velocity_->msg_.twist.linear.x = new_vel[0];
+                pub_admittance_velocity_->msg_.twist.linear.y = new_vel[1];
+                pub_admittance_velocity_->msg_.twist.angular.z = new_vel[2];
+                pub_admittance_velocity_->unlockAndPublish();
+            }
         }
 
         // handle special cases for each dimension seperately
@@ -267,15 +286,19 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         delta_vel_ = std::pow(new_vel[0], 2) + std::pow(new_vel[1], 2) + std::pow(new_vel[2], 2);
 
         //apply modalities
-        if (modalities_used_ != none && userIsGripping()) new_vel = applyModalities(new_vel); 
-
-        if (pub_final_velocity_->trylock()) {
-            pub_final_velocity_->msg_.header.stamp = time;
-            pub_final_velocity_->msg_.header.frame_id = controllerFrameId_;
-            pub_final_velocity_->msg_.twist.linear.x = new_vel[0];
-            pub_final_velocity_->msg_.twist.linear.y = new_vel[1];
-            pub_final_velocity_->msg_.twist.angular.z = new_vel[2];
-            pub_final_velocity_->unlockAndPublish();
+        if (modalities_used_ != none && userIsGripping()) {
+            new_vel = applyModalities(new_vel, force_input_);
+        }
+        
+        if (debug_) {
+            if (pub_final_velocity_->trylock()) {
+                pub_final_velocity_->msg_.header.stamp = time;
+                pub_final_velocity_->msg_.header.frame_id = controllerFrameId_;
+                pub_final_velocity_->msg_.twist.linear.x = new_vel[0];
+                pub_final_velocity_->msg_.twist.linear.y = new_vel[1];
+                pub_final_velocity_->msg_.twist.angular.z = new_vel[2];
+                pub_final_velocity_->unlockAndPublish();
+            }
         }
 
         if (no_hw_output_) {
@@ -346,8 +369,11 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
  * \brief Stops the controller
  */
 void FTSBaseController::stopping(const ros::Time& /*time*/) {
-    stopController();
+    std::string lock = "stopping";
+    protectedToggleControllerRunning(false, lock);
     controller_started_ = false;
+    protectedToggleControllerRunning(false, lock);
+    setLEDPhase(controller_led_phases::STOPPED);
 }
 
 /**
@@ -358,6 +384,7 @@ void FTSBaseController::restartController()
     std::string lock = "restart_controller";
     protectedToggleControllerRunning(false, lock);
     protectedToggleControllerRunning(true, lock);
+    setLEDPhase(controller_led_phases::UNLOCKED);
 
 }
 
@@ -386,6 +413,7 @@ void FTSBaseController::restartControllerAndOrientWheels(std::array<double,3> di
     protectedToggleControllerRunning(false, lock);
     setOrientWheels(direction);
     protectedToggleControllerRunning(true, lock);
+    setLEDPhase(controller_led_phases::UNLOCKED);
 }
 
 std::string FTSBaseController::setUseTwistInput(bool use_twist_input)
@@ -394,15 +422,13 @@ std::string FTSBaseController::setUseTwistInput(bool use_twist_input)
     protectedToggleControllerRunning(false, lock);
     std::string message = internalSetUseTwistInput(use_twist_input);
     protectedToggleControllerRunning(true, lock);
+    setLEDPhase(controller_led_phases::UNLOCKED);
     return message;
 }
 
 /* ______CONTROLLER RUNNING CONTROL_______*/
 void FTSBaseController::protectedToggleControllerRunning(const bool start_stop, const std::string locking_string)
 {
-    if (!controller_started_) {
-        return;
-    }
     boost::mutex::scoped_lock lock(locking_mutex_);
     if (!start_stop) {
         ROS_DEBUG("Requested Locking Nr: '%s'", locking_string.c_str());
@@ -411,7 +437,9 @@ void FTSBaseController::protectedToggleControllerRunning(const bool start_stop, 
             locking_string_ = locking_string;
             stopController();
         } else if (locking_string_.compare(locking_string) == 0) {
-            ROS_WARN("Requested Unlocking without start the controller!");
+            ROS_WARN("Requested unlock without start the controller for '%s'!",
+                locking_string.c_str()
+            );
             locking_string_ = LOCKING_NONE;
         } else {
             ROS_FATAL("Request lock for not allowed '%s'; allowed key is %s",
@@ -527,8 +555,8 @@ void FTSBaseController::diagnostics(diagnostic_updater::DiagnosticStatusWrapper 
     status.add("platform is moving", platform_is_moving_);
     status.add("use twist input", use_twist_input_);
     status.add("no hardware output", no_hw_output_);
-    status.add("modalities used", modalities_used_);
-    status.add("adapt center of gravity", adapt_center_of_gravity_);
+    status.add("modalities used", modality_type_names_[modalities_used_]);
+    status.add("adapt center of rotation", adapt_center_of_rotation_);
     status.add("orient wheels", orient_wheels_);
     status.add("controller frame id", controllerFrameId_);
 }
@@ -782,8 +810,10 @@ bool FTSBaseController::configureModalitiesCallback(std_srvs::Empty::Request &re
 /**
  * \brief Applies the preset modalities to input base velocity and returns the resulting velocity
  */
-std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> base_vel) {
-
+std::array<double, 3> FTSBaseController::applyModalities(
+    const std::array<double, 3> & base_vel, 
+    const std::array<double, 3> & force_input)
+{
     std::array<double, 3> vel_after_modalities = base_vel;
     geometry_msgs::Twist msg_before_modality;
     geometry_msgs::Twist after_force_mod, after_walls_mod, after_pathtrack_mod, after_area_mod;
@@ -821,12 +851,12 @@ std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> 
             robotrainer_helper_types::wrench_twist output_msg_after_modality;
 
             input_msg_before_modality.twist_ = msg_before_modality;
-            input_msg_before_modality.wrench_.force.x = force_input_[0];
-            input_msg_before_modality.wrench_.force.y = force_input_[1];
+            input_msg_before_modality.wrench_.force.x = force_input[0];
+            input_msg_before_modality.wrench_.force.y = force_input[1];
             input_msg_before_modality.wrench_.force.z = 0.0;
             input_msg_before_modality.wrench_.torque.x = 0.0;
             input_msg_before_modality.wrench_.torque.y = 0.0;
-            input_msg_before_modality.wrench_.torque.z = force_input_[2];
+            input_msg_before_modality.wrench_.torque.z = force_input[2];
 
             force_controller_modality_ptr_->update(input_msg_before_modality, output_msg_after_modality);
             walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
@@ -838,7 +868,6 @@ std::array<double, 3> FTSBaseController::applyModalities( std::array<double, 3> 
             break;
     }
     return vel_after_modalities;
-
 }
 
 /*___MORE COMPLEX GLOBAL MODALITIES___*/
@@ -891,13 +920,13 @@ std::array<double, 3> FTSBaseController::applyAreaCounterforce(std::array<double
 }
 
 /**
- / ** \brief This function adapts the center of gravity (CoG) for the robot by the given global values of cog_x_ and cog_y_. This effectively allowes the robot to follow a circle with defined radius when pushing it in x-direction only (when modifying cog_y_ to values other than zero.). This also allowes the robot to tip around its front or back when moving it around its rotation axis (when changing the cog_x_ value). Furthermore, a slight change of the CoG allowes the robot to adapt to users having a slightly varying force between both hands by compensating the weaker hand by shifting the cog_y_ towards the stronger hand, effectively reducing its influence.
+ / ** \brief This function adapts the center of rotation (CoR) for the robot by the given global values of cor_x_ and cor_y_. This effectively allowes the robot to follow a circle with defined radius when pushing it in x-direction only (when modifying cor_y_ to values other than zero.). This also allowes the robot to tip around its front or back when moving it around its rotation axis (when changing the cor_x_ value). Furthermore, a slight change of the CoR allowes the robot to adapt to users having a slightly varying force between both hands by compensating the weaker hand by shifting the cor_y_ towards the stronger hand, effectively reducing its influence.
  */
-std::array<double, 3> FTSBaseController::adaptCenterOfGravity(std::array<double, 3> fts_input_raw) {
+std::array<double, 3> FTSBaseController::adaptCenterOfRotation(std::array<double, 3> fts_input_raw) {
 
-        double changedTorque = fts_input_raw[0] * cog_y_ - fts_input_raw[1] * cog_x_ + fts_input_raw[2];
+        double changedTorque = fts_input_raw[0] * cor_y_ - fts_input_raw[1] * cor_x_ + fts_input_raw[2];
         std::array<double, 3> changedInput;
-        ROS_DEBUG("Changed torque from: %.2f to %.2f (Chnage: %f)", fts_input_raw[2], changedTorque, std::fabs(fts_input_raw[2]-changedTorque));
+        ROS_DEBUG("Changed torque from: %.2f to %.2f (Change: %f)", fts_input_raw[2], changedTorque, std::fabs(fts_input_raw[2]-changedTorque));
         changedInput[0] = fts_input_raw[0];
         changedInput[1] = fts_input_raw[1];
         changedInput[2] = changedTorque;
@@ -928,6 +957,19 @@ void FTSBaseController::discretizeWithNewParameters( std::array<double,3> time_c
         discretizeController();
 }
 
+/**
+ * \brief This function calls the internal function to discretize the input values of the PT1-element with mass and damping
+ */
+void FTSBaseController::discretizeWithNewMassDamping( std::array<double,3> virtual_mass, std::array<double,3> virtual_damping) {
+
+         std::array<double,3> time_const, gain_for_control;
+
+         for (int i = 0; i < 3; i++) {
+                gain_for_control[i] = 1.0/virtual_damping[i];
+                time_const[i] = virtual_mass[i]/virtual_damping[i];
+        }
+        discretizeWithNewParameters(time_const, gain_for_control);
+}
 
 /**
 * \brief Dynamic Reconfigure Callback of the FTSBaseController class
@@ -937,7 +979,7 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     if (!controller_started_) {
         return;
     }
-    
+        
     // Update values in GUI only
     config.x_damping = calculatevirtualdamping(config.x_max_force, config.x_max_vel, config.x_gain);
     config.x_mass = calculatevirtualmass(config.x_time_const, config.x_damping);    
@@ -948,8 +990,11 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     
     // First check if anything changed, if not go out an do not stop controller
     bool needs_processing = config.reset_controller || config.recalculate_FTS_offsets ||
-            no_hw_output_ != config.no_hw_output || use_twist_input_ != config.use_twist_input ||
-            config.apply_base_controller_params || config.apply_control_actions;
+                            config.apply_base_controller_params || config.apply_control_actions ||
+                            no_hw_output_ != config.no_hw_output || 
+                            use_twist_input_ != config.use_twist_input ||
+                            debug_ != config.debug_output;
+             ;
     if (!needs_processing) {
         return;
     }
@@ -970,8 +1015,10 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         return;
     }
 
-    std::string lock = "reconfigure_callback";
+    std::string lock = "base_reconfigure_callback";
     protectedToggleControllerRunning(false, lock);
+    
+    debug_ = config.debug_output;
 
     if (no_hw_output_ != config.no_hw_output) {
         internalSetNoHWOutput(config.no_hw_output);
@@ -1070,11 +1117,11 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
             staticCounterForce_[2] = config.counter_torque_rot;
         }
 
-        adapt_center_of_gravity_ = config.adapt_center_of_gravity;
-        if (adapt_center_of_gravity_) {
-            cog_x_ = config.cog_x;
-            cog_y_ = config.cog_y;
-            ROS_DEBUG("[ADAPT_CoG: ON] - Cog: (x:%.2f, y:%.2f)", cog_x_, cog_y_);
+        adapt_center_of_rotation_ = config.adapt_center_of_rotation;
+        if (adapt_center_of_rotation_) {
+            cor_x_ = config.cor_x;
+            cor_y_ = config.cor_y;
+            ROS_DEBUG("[ADAPT_CoR: ON] - CoR: (x:%.2f, y:%.2f)", cor_x_, cor_y_);
         }
         config.apply_control_actions = false;
     }
@@ -1115,8 +1162,9 @@ void FTSBaseController::counterforce_area_callback( const std_msgs::Float64::Con
 * If the input Force/Torque exceeds the maximum allowed value, it is set as maximum input, if it is less than the minimum detectable input, it is set as zero.
 * An output value of 1.0 means maximum force input was generated for the dimension.
 */
-std::array<double, 3> FTSBaseController::getScaledLimitedFTSInput( std::array<double, 3> raw_fts_input ) {
-
+std::array<double, 3> FTSBaseController::getScaledLimitedFTSInput(
+    std::array<double, 3> raw_fts_input)
+{
     std::array<double, 3> limited_force;
 
     for (int i = 0; i < 3; i++) {
@@ -1133,8 +1181,8 @@ std::array<double, 3> FTSBaseController::getScaledLimitedFTSInput( std::array<do
 /**
 * \brief Gets the last detected FTS input and returns it
 */
-std::array<double, 3> FTSBaseController::getFTSInput( const ros::Time& time ) {
-
+std::array<double, 3> FTSBaseController::getFTSInput(const ros::Time & time)
+{
     std::array<double, 3> raw_fts_input;
     geometry_msgs::WrenchStamped force_input;
 
@@ -1143,10 +1191,12 @@ std::array<double, 3> FTSBaseController::getFTSInput( const ros::Time& time ) {
     force_input.wrench.force.x  = hw_fts_.getForce()[0];
     force_input.wrench.force.y  = hw_fts_.getForce()[1];
     force_input.wrench.torque.z = hw_fts_.getTorque()[2];
-
-    if (pub_force_input_raw_->trylock()) {
-        pub_force_input_raw_->msg_ = force_input;
-        pub_force_input_raw_->unlockAndPublish();
+    
+    if (debug_) {
+        if (pub_force_input_raw_->trylock()) {
+            pub_force_input_raw_->msg_ = force_input;
+            pub_force_input_raw_->unlockAndPublish();
+        }
     }
 
     raw_fts_input[0] = force_input.wrench.force.x;
@@ -1210,12 +1260,18 @@ void FTSBaseController::forceInputToLed( const geometry_msgs::WrenchStamped forc
         pub_input_force_for_led_->msg_ = force_input;
         pub_input_force_for_led_->unlockAndPublish();
     }
+    
+    if (pub_input_force_force_for_gui_->trylock()) {
+        pub_input_force_force_for_gui_->msg_ = force_input;
+        pub_input_force_force_for_gui_->unlockAndPublish();
+    }
 }
 
 /**
  * \brief Returns the time since the user has last released the robot (e.g. amount of time ungripped)
  */
-double FTSBaseController::getTimeSinceReleasingRobot( const ros::Time& time ) {
+double FTSBaseController::getTimeSinceReleasingRobot(const ros::Time& time)
+{
     if (userIsGripping()) {
         return 0.0;
     } else {
@@ -1272,6 +1328,28 @@ std::array<double, 3> FTSBaseController::getTimeConst() {
  */
 std::array<double, 3> FTSBaseController::getGain() {
         return gain_;
+}
+
+/**
+ * \brief Returns the current Damping values of the controller for each dimension.
+ */
+std::array<double, 3> FTSBaseController::getDamping() {
+    std::array<double, 3> damping;
+    for (int i=0; i<3; i++) {
+        damping[i] = 1.0/gain_[i];
+    }
+    return damping;
+}
+
+/**
+ * \brief Returns the current Mass values of the controller for each dimension.
+ */
+std::array<double, 3> FTSBaseController::getMass() {
+    std::array<double, 3> mass;
+    for (int i=0; i<3; i++) {
+        mass[i] = time_const_[i]/gain_[i];
+    }
+    return mass;
 }
 
 /**
@@ -1370,6 +1448,11 @@ bool FTSBaseController::recalculateFTSOffsets()
     bool ret = unsafeRecalculateFTSOffsets();
 
     protectedToggleControllerRunning(ret, lock);
+    if (ret) {
+        setLEDPhase(controller_led_phases::UNLOCKED);
+    } else {
+        setLEDPhase(controller_led_phases::STOPPED);
+    }
     return ret;
 }
 
@@ -1386,7 +1469,22 @@ geometry_msgs::Vector3 FTSBaseController::convertToMessage( std::array<double,3>
         return message;
 }
 
-
+/**
+ * \brief This function converts a std::array<double, 3> input vector into a geometry_msgs::Vector3 message
+ */
+void FTSBaseController::convertToWrenchAndPublish(const ros::Time & time, 
+                                                  const std::array<double,3> & input_vec,
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> & wrench_pub)
+{   
+    if (wrench_pub->trylock()) {
+        wrench_pub->msg_.header.stamp = time;
+        wrench_pub->msg_.header.frame_id = controllerFrameId_;
+        wrench_pub->msg_.wrench.force.x = input_vec[0];
+        wrench_pub->msg_.wrench.force.y = input_vec[1];
+        wrench_pub->msg_.wrench.torque.z = input_vec[2];
+        wrench_pub->unlockAndPublish();
+    }
+}
 
 /*_______LED STUFF______*/
 /**
@@ -1418,6 +1516,9 @@ void FTSBaseController::sendLEDOutput() {
         if (currentLEDPhase_ == controller_led_phases::UNLOCKED) {
             setLEDPhase(controller_led_phases::SHOW_FORCE);
             ledGoalToSend_ = blinky_goals_.blinkyFreeMovementBlue_;
+        }
+        if (currentLEDPhase_ == controller_led_phases::STOPPED) {
+            ledGoalToSend_ = blinky_goals_.blinkyStoppedRed_;
         }
         led_ac_->sendGoal(ledGoalToSend_);
     }

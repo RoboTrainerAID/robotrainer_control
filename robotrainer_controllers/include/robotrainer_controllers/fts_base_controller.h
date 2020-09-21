@@ -2,6 +2,7 @@
 #ifndef ROBOTRAINER_CONTROLLERS_FTS_BASE_CONTROLLER_H
 #define ROBOTRAINER_CONTROLLERS_FTS_BASE_CONTROLLER_H
 
+#include <memory>
 #include <thread>
 
 #include <actionlib/client/simple_action_client.h>
@@ -285,6 +286,7 @@ protected:
     //modalitites parameters:
     enum modality_type{none, base_modalities, controller_modalities};
     modality_type modalities_used_;
+    const std::vector<std::string> modality_type_names_ = {"none", "base", "controller"};
 
     ros::ServiceServer configure_modalities_srv_;
 
@@ -318,12 +320,20 @@ protected:
         pub_final_velocity_;
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> 
         pub_force_input_raw_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>>
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> 
+        pub_force_input_scaled_limited_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
         pub_resulting_force_after_counterforce_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
+        pub_resulting_force_after_cor_;
+        
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
+        pub_input_force_force_for_gui_;
 
     // LEDS
-    realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> *pub_input_force_for_led_;
-    actionlib::SimpleActionClient<iirob_led::BlinkyAction> *led_ac_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
+        pub_input_force_for_led_;
+    std::shared_ptr<actionlib::SimpleActionClient<iirob_led::BlinkyAction>> led_ac_;
 
     controller_led_phases led_phase_, currentLEDPhase_ = controller_led_phases::UNDEFINED;
     LedBlinkyGoals blinky_goals_;
@@ -338,9 +348,9 @@ protected:
     //counter force modality
     std::array<double,3> staticCounterForce_ = {{0.0, 0.0, 0.0}};
     //adaptable center of gravity modality
-    double cog_x_;
-    double cog_y_;
-    bool adapt_center_of_gravity_;
+    double cor_x_;
+    double cor_y_;
+    bool adapt_center_of_rotation_;
     //counterforce area subscriber
     ros::Subscriber counterforce_area_sub_;
     std::array<double,3> areaCounterForce_ = {{0.0, 0.0, 0.0}};
@@ -363,9 +373,10 @@ protected:
     std::array<double, 3> applyCounterforce( std::array<double, 3> scaledInputForce, std::array<double, 3> scaledCounterforce );
     std::array<double, 3> applyGlobalCounterforce( std::array<double, 3> scaledInputForce );
     std::array<double, 3> applyAreaCounterforce(std::array<double, 3> scaledInputForce);
-    std::array<double, 3> adaptCenterOfGravity(std::array<double, 3> fts_input_raw);
+    std::array<double, 3> adaptCenterOfRotation(std::array<double, 3> fts_input_raw);
 
-    std::array<double, 3> applyModalities( std::array<double, 3> base_vel );
+    std::array<double, 3> applyModalities(const std::array<double, 3> & base_vel, 
+                                          const std::array<double, 3> & force_input);
 
     void counterforce_area_callback( const std_msgs::Float64::ConstPtr& msg );
 
@@ -429,6 +440,8 @@ protected:
     void restartControllerAndOrientWheels(std::array<double,3>);
     void discretizeController();
     void discretizeWithNewParameters( std::array<double,3> time_const_for_control, std::array<double,3> gain_for_control);
+    void discretizeWithNewMassDamping( std::array<double,3> virtual_mass, std::array<double,3> virtual_damping);
+
 
     void reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level);
     
@@ -436,16 +449,18 @@ protected:
     double calculatevirtualmass(double timeconstant, double damping);
 
     //getter functions
-    std::array<double, 3> getScaledLimitedFTSInput( std::array<double, 3> rawFTSInput );
-    std::array<double, 3> getFTSInput( const ros::Time& time );
-    std::array<double, 3> getFTSInputIfUserGrips( const ros::Time& time );
-    double getTimeSinceReleasingRobot( const ros::Time& time );
+    std::array<double, 3> getScaledLimitedFTSInput(std::array<double, 3> rawFTSInput);
+    std::array<double, 3> getFTSInput(const ros::Time& time);
+//     std::array<double, 3> getFTSInputIfUserGrips( const ros::Time& time );
+    double getTimeSinceReleasingRobot(const ros::Time& time);
     std::array<double, 3> getOldForce();
     std::array<double, 3> getOldForcePercent();
     std::array<double, 3> getOldVelocity();
     std::array<double, 3> getOldVelocityPercent();
     std::array<double, 3> getTimeConst();
     std::array<double, 3> getGain();
+    std::array<double, 3> getDamping();
+    std::array<double, 3> getMass();
     std::array<double, 3> getMaxFt();
     std::array<double, 3> getMaxVel();
     bool robotIsMovingForward(void);
@@ -463,6 +478,10 @@ protected:
 
     //helper functions
     geometry_msgs::Vector3 convertToMessage(std::array<double, 3> input);
+    void convertToWrenchAndPublish(const ros::Time & time, 
+                                   const std::array<double,3> & input_vec,
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> & wrench_pub);
+    
     void untickDynamicReconfigureParam(std::string parameter_name);
 
     // Getters and setters to protect concurency of multiple threads
@@ -472,7 +491,9 @@ protected:
 
 
 protected:
-    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
+    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
+    
+    bool debug_;
 
 private:
     boost::mutex controller_internal_states_mutex_;
@@ -483,6 +504,7 @@ private:
     bool controller_started_;
 
     diagnostic_updater::Updater diagnostic_;
+    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
 
     // Update function variables
     bool running_;
@@ -505,7 +527,6 @@ private:
     // Controller running state control
     const std::string LOCKING_NONE = "--none--";
     std::string locking_string_ = LOCKING_NONE;
-    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
     void startController(void);
 
     // Protected change of controller internals

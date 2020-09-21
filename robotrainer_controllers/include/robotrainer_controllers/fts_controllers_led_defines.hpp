@@ -18,6 +18,7 @@ enum class controller_led_phases : std::uint8_t
     UNDEFINED = 0,
     UNLOCKED = 1,
     SHOW_FORCE = 2,
+    STOPPED = 3,
 
     // Adaptive Controller
     WAIT_FOR_INPUT = 10,
@@ -38,6 +39,7 @@ public:
     iirob_led::BlinkyGoal blinkyPhaseYellow_;
     iirob_led::BlinkyGoal blinkyFinishedRed_;
     iirob_led::BlinkyGoal blinkyFreeMovementBlue_;
+    iirob_led::BlinkyGoal blinkyStoppedRed_;
     iirob_led::BlinkyGoal blinkyStepAway_;
     // dimension dependant goals:
     iirob_led::BlinkyGoal blinkyStart_x_;
@@ -69,7 +71,7 @@ public:
         blinkyStartGreen_.duration_on = 3.0;
         blinkyStartGreen_.duration_off = 0.0;
         blinkyStartGreen_.start_led = 1;
-        blinkyStartGreen_.end_led = 231;  // SR2: 384;
+        blinkyStartGreen_.end_led = 232;  // SR2: 384;
         blinkyStartGreen_.num_leds = 0;
         blinkyStartGreen_.fade_in = false;
         blinkyStartGreen_.fade_out = false;
@@ -78,8 +80,8 @@ public:
         blinkyStart_x_.blinks = 100;
         blinkyStart_x_.duration_on = 0.25;
         blinkyStart_x_.duration_off = 0.05;
-        blinkyStart_x_.start_led = 231-72; // SR2: 300;
-        blinkyStart_x_.end_led = 231; // SR2: 384;
+        blinkyStart_x_.start_led = 232-72; // SR2: 300;
+        blinkyStart_x_.end_led = 232; // SR2: 384;
 
         blinkyStart_x_back_= blinkyStart_x_;
         blinkyStart_x_back_.start_led = 45; // SR2: 108;
@@ -120,7 +122,7 @@ public:
         blinkyPhaseYellow_.duration_on = 0.20;
         blinkyPhaseYellow_.duration_off = 0.05;
         blinkyPhaseYellow_.start_led = 1;
-        blinkyPhaseYellow_.end_led = 231;
+        blinkyPhaseYellow_.end_led = 232;
         blinkyPhaseYellow_.num_leds = 0;
         blinkyPhaseYellow_.fade_in = false;
         blinkyPhaseYellow_.fade_out = false;
@@ -133,7 +135,7 @@ public:
         blinkyFinishedRed_.duration_on = 0.5;
         blinkyFinishedRed_.duration_off = 0.0;
         blinkyFinishedRed_.start_led = 1;
-        blinkyFinishedRed_.end_led = 231;
+        blinkyFinishedRed_.end_led = 232;
         blinkyFinishedRed_.num_leds = 0;
         blinkyFinishedRed_.fade_in = false;
         blinkyFinishedRed_.fade_out = false;
@@ -182,11 +184,23 @@ public:
         blinkyFreeMovementBlue_.duration_on = 0.7;
         blinkyFreeMovementBlue_.duration_off = 0.0;
         blinkyFreeMovementBlue_.start_led = 1;
-        blinkyFreeMovementBlue_.end_led = 231;
+        blinkyFreeMovementBlue_.end_led = 232;
         blinkyFreeMovementBlue_.num_leds = 0;
         blinkyFreeMovementBlue_.fade_in = false;
         blinkyFreeMovementBlue_.fade_out = false;
         
+        blinkyStoppedRed_.color.r = 1.0;
+        blinkyStoppedRed_.color.g = 0.56;
+        blinkyStoppedRed_.color.b = 0.11;
+        blinkyStoppedRed_.color.a = 0.4;
+        blinkyStoppedRed_.blinks = 1;
+        blinkyStoppedRed_.duration_on = 5;
+        blinkyStoppedRed_.duration_off = 0.0;
+        blinkyStoppedRed_.start_led = 1;
+        blinkyStoppedRed_.end_led = 232;
+        blinkyStoppedRed_.num_leds = 0;
+        blinkyStoppedRed_.fade_in = false;
+        blinkyStoppedRed_.fade_out = false;
     };
     
     ~LedBlinkyGoals() = default;

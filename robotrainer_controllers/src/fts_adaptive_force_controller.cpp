@@ -8,70 +8,95 @@ namespace robotrainer_controllers
 
 bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle &root_nh, ros::NodeHandle& controller_nh) {
 
-        if (!FTSBaseController::init(robot_hw, root_nh, controller_nh)) { // init base controller if yet not initialized
-                ROS_FATAL("Initializing FTSBaseController went wrong... Can not continue...");
-                return false;
-        }
-        ROS_INFO("Init FTSAdaptiveForceController!");
-        setBaseValues();
+    if (!FTSBaseController::init(robot_hw, root_nh, controller_nh)) { // init base controller if yet not initialized
+        ROS_FATAL("Initializing FTSBaseController went wrong... Can not continue...");
+        return false;
+    }
+    ROS_INFO("Init FTSAdaptiveForceController!");
+    setBaseValues();
+    
+    diagnostic_.add("RoboTrainer Controller - Adaptive", this, &FTSAdaptiveForceController::diagnostics);
+    diagnostic_.setHardwareID("FTS_Adaptive_Controller");
+    diagnostic_.broadcast(0, "Initializing FTS Adaptive Controller");
 
-        /* get Parameters from rosparam server (stored on yaml file) */
-        ros::NodeHandle fts_a_ctrl_nh(controller_nh, "FTSAdaptiveForceController");
-        fts_a_ctrl_nh.param<bool>("adaptive_force/use_passive_behavior_ctrlr", use_passive_behavior_ctrlr_, false);
-        fts_a_ctrl_nh.param<bool>("adaptive_force/use_adaptive_force", adaption_is_active_, false);
-        // Adaptive force parameters
-            fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/x", force_scale_minvel_[0], 1.0);
-            fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/y", force_scale_minvel_[1], 1.0);
-            fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/rot", force_scale_minvel_[2], 1.0);
-            fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/x", force_scale_maxvel_[0], 1.0);
-            fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/y", force_scale_maxvel_[1], 1.0);
-            fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/rot", force_scale_maxvel_[2], 1.0);
-        // smooth transition
-            fts_a_ctrl_nh.param<bool>("transition/use_smooth_transition", use_smooth_transition_, false);
-            fts_a_ctrl_nh.param<double>("transition/transition_rate", transition_rate_, 1.0);
-        // param MaxForce test
-            fts_a_ctrl_nh.param<int>("parametrization/x_base/springConst", springConstant_x_, 200);
-            fts_a_ctrl_nh.param<int>("parametrization/y_base/springConst", springConstant_y_, 150);
-            fts_a_ctrl_nh.param<int>("parametrization/rot_base/springConst", springConstant_rot_, 60);
+    /* get Parameters from rosparam server (stored in yaml file) */
+    ros::NodeHandle fts_a_ctrl_nh(controller_nh, "FTSAdaptiveForceController");
+    fts_a_ctrl_nh.param<bool>("adaptive_force/use_passive_behavior_ctrlr", use_passive_behavior_ctrlr_, false);
+    // Adaptive force parameters
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/x", force_scale_minvel_[0], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/y", force_scale_minvel_[1], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/rot", force_scale_minvel_[2], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/x", force_scale_maxvel_[0], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/y", force_scale_maxvel_[1], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/rot", force_scale_maxvel_[2], 1.0);
+    // damping adaption (yu2003)
+    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/x",
+                                damping_adaption_params_.min[0], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/y",
+                                damping_adaption_params_.min[1], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/rot", 
+                                damping_adaption_params_.min[2], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/x",
+                                damping_adaption_params_.max[0], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/y",
+                                damping_adaption_params_.max[1], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/rot",
+                                damping_adaption_params_.max[2], 1.0);
+    // smooth transition
+    fts_a_ctrl_nh.param<bool>("transition/use_smooth_transition", use_smooth_transition_, false);
+    fts_a_ctrl_nh.param<double>("transition/transition_rate", transition_rate_, 1.0);
+    // param MaxForce test
+    fts_a_ctrl_nh.param<int>("parametrization/x_base/springConst", springConstant_x_, 200);
+    fts_a_ctrl_nh.param<int>("parametrization/y_base/springConst", springConstant_y_, 150);
+    fts_a_ctrl_nh.param<int>("parametrization/rot_base/springConst", springConstant_rot_, 60);
 
-            fts_a_ctrl_nh.param<double>("parametrization/x_base/minForce", baseForce_minimumForce_x_, 40.0);
-            fts_a_ctrl_nh.param<double>("parametrization/y_base/minForce", baseForce_minimumForce_y_, 40.0);
-            fts_a_ctrl_nh.param<double>("parametrization/rot_base/minForce", baseForce_minimumTorque_, 10.0);
+    fts_a_ctrl_nh.param<double>("parametrization/x_base/minForce", baseForce_minimumForce_x_, 40.0);
+    fts_a_ctrl_nh.param<double>("parametrization/y_base/minForce", baseForce_minimumForce_y_, 40.0);
+    fts_a_ctrl_nh.param<double>("parametrization/rot_base/minForce", baseForce_minimumTorque_, 10.0);
 
-            fts_a_ctrl_nh.param<double>("parametrization/x_base/returnForce", returnForce_x_, 20.0);
-            fts_a_ctrl_nh.param<double>("parametrization/y_base/returnForce", returnForce_y_, 15.0);
-            fts_a_ctrl_nh.param<double>("parametrization/rot_base/returnForce", returnForce_rot_, 8.0);
+    fts_a_ctrl_nh.param<double>("parametrization/x_base/returnForce", returnForce_x_, 20.0);
+    fts_a_ctrl_nh.param<double>("parametrization/y_base/returnForce", returnForce_y_, 15.0);
+    fts_a_ctrl_nh.param<double>("parametrization/rot_base/returnForce", returnForce_rot_, 8.0);
 
-        /* for parametrization */
-            parametrization_active_ = false;
-            stepInitialized_ = false;
-            userParametrized_maxFT_ = getMaxFt();
-            userParametrized_maxVel_ = getMaxVel();
-            standard_maxFT_ = getMaxFt();
-            standard_maxVel_ = getMaxVel();
-            currentStep_ = baseX;
-            sub_legtrack_ = root_nh.subscribe("/leg_detection/people_msg_stamped", 1, &FTSAdaptiveForceController::legTrackCallback, this );
-            baseForce_allParamsStored_ = false;
+    non_standard_max_forces_ = false;
+            
+    /* for parametrization */
+    parametrization_active_ = false;
+    parameterization_step_initalized_ = false;
+    userParametrized_maxFT_ = getMaxFt();
+    userParametrized_maxVel_ = getMaxVel();
+    standard_maxFT_ = getMaxFt();
+    standard_maxVel_ = getMaxVel();
+    parameterization_current_step_ = baseX;
+    sub_legtrack_ = root_nh.subscribe("/leg_detection/people_msg_stamped", 1, &FTSAdaptiveForceController::legTrackCallback, this );
+    baseForce_allParamsStored_ = false;
+    
+    used_ft_type_ = standard_ft;
+    used_vel_based_force_adaption_ = vel_based_adaption_none;
+    pre_adaption_base_params_.gain = getGain();
+    pre_adaption_base_params_.time_const = getTimeConst();
+    pre_adaption_base_params_.damping = getDamping();
+    pre_adaption_base_params_.mass = getMass();
 
     /* Parametrization debug topics */
-        pub_base_currentDist_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/currentDistanceFromStart", 1);
-        pub_base_averageDist_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/averageDist", 1);
-        pub_base_currentRawForce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/currentRawForce", 1);
-        pub_base_virtSpring_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/virtualSpringForce", 1);
-        pub_base_resForce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/resultingForce", 1);
+    pub_base_currentDist_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/currentDistanceFromStart", 1);
+    pub_base_averageDist_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/averageDist", 1);
+    pub_base_currentRawForce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/currentRawForce", 1);
+    pub_base_virtSpring_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/virtualSpringForce", 1);
+    pub_base_resForce_ = new realtime_tools::RealtimePublisher<geometry_msgs::Twist>(controller_nh, "parametrization/base/resultingForce", 1);
 
-        // leg tracking
-        travelledDistance_ = 0.0;
-        // adaption factors
-        pub_adaptive_scale_x_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/currentScale", 1);
-        pub_adaptive_factor_min_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/minVelFactor", 1);
-        pub_adaptive_factor_max_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/maxVelFactor", 1);
-        pub_adaptive_distDiff_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/distanceDiffToLast", 1);
-        //force-torque
-        pub_force_adapt_limited_input_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adapted_limited_input_force", 1);
+    // leg tracking
+    travelledDistance_ = 0.0;
+    // adaption factors
+    pub_adaptive_scale_x_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/currentScale", 1);
+    pub_adaptive_factor_min_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/minVelFactor", 1);
+    pub_adaptive_factor_max_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/maxVelFactor", 1);
+    pub_adaptive_distDiff_ = new realtime_tools::RealtimePublisher<std_msgs::Float64>(controller_nh, "parametrization/adaptX/distanceDiffToLast", 1);
+    //force-torque
+    pub_force_adapt_limited_input_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adapted_limited_input_force", 1);
 
-        pub_adaptive_scale_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/scale", 1);
-        pub_adaptive_max_ft_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/maxFT", 1);
+    pub_adaptive_scale_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/scale", 1);
+    pub_adaptive_max_ft_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/maxFT", 1);
 
     /* Set dynamic reconfigure */
     fts_adaptive_dysrv_ = new dynamic_reconfigure::Server<robotrainer_controllers::FTSAdaptiveForceControllerConfig>(fts_a_ctrl_nh);
@@ -86,6 +111,8 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
     passive_behavior_ctrl_->initInChain(root_nh, controller_nh);
 
     setLEDPhase(controller_led_phases::UNLOCKED); //Letting the robot blink blue to know initialization finished
+    
+    diagnostic_.force_update();
     return base_initialized_;
 }
 
@@ -117,7 +144,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 fts_input_raw = zeroForce_; // TODO: This should be already done in "getFTSInput"
                 ROS_WARN_THROTTLE(2, "Parameterization is finished! User should relese the RoboTrainer!");
             }
-        } else if (!stepInitialized_) {
+        } else if (!parameterization_step_initalized_) {
             if (!userIsGripping()) {
                 initParametrizationStep();
             } else {
@@ -125,12 +152,12 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 fts_input_raw = zeroForce_; // TODO: This should be already done in "getFTSInput"
                 ROS_WARN_THROTTLE(2, "Parameterization is finished! User should relese the RoboTrainer!");
             }
-        } else if ( stepInitialized_ && !stepActivated_) { //step should be initialized, wait for user input to activate the step
+        } else if ( parameterization_step_initalized_ && !stepActivated_) { //step should be initialized, wait for user input to activate the step
             if ( (current_loop_time_ - step_finished_time_).toSec() < 1.0 ) { //wait until unlocking new phase
                     setLEDPhase(controller_led_phases::PHASE_FINISHED);
             } else {
                 resetTravelledDistance();
-                switch (currentStep_) {
+                switch (parameterization_current_step_) {
                     case baseX: case baseYLeft: case baseYRight: case baseRotLeft: case baseRotRight:
                         resetBaseForceTest();
                         setLEDPhase(controller_led_phases::WAIT_FOR_INPUT);
@@ -151,9 +178,9 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 }
             }
         //step is initialized and activated, so perform a loop of the corresponding function
-        } else if (stepInitialized_ && stepActivated_) {
+        } else if (parameterization_step_initalized_ && stepActivated_) {
             updateTravelledDistance();
-            switch (currentStep_) {
+            switch (parameterization_current_step_) {
                 case baseX:
                         ROS_WARN_ONCE("[PARAM BASE X] - STARTED");
                         fts_input_raw = baseForceTest(fts_input_raw);
@@ -181,7 +208,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 case adaptX:
                     ROS_WARN_ONCE("[PARAM ADAPTIVE X] - STARTED");
                     parametrizeAdaptForceX();
-                    adaptForceScale();
+                    adaptForceScaleBasedOnVelocity();
                     break;
                 case finished:
                     ROS_WARN("[PARAM FINISHED!] - Parametrization has finished, setting robot to active!");
@@ -190,7 +217,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                     break;
                 default:
                     ROS_WARN("Invalid parametrization step set, thus finishing parametrization now");
-                    currentStep_ = finished;
+                    parameterization_current_step_ = finished;
             }
         } else {
             fts_input_raw = zeroForce_; //prevent robot from moving when nobody is gripping it
@@ -198,7 +225,9 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
     } else { // robot in normal use
         setActiveDimensions( all_active_);
 
-        if (adaption_is_active_) { adaptForceScale(); }
+        if (used_vel_based_force_adaption_ != vel_based_adaption_none) {
+            adaptForceScaleBasedOnVelocity();
+        }
     }
 
     std::array<double,3> scaledLimitedFTSInput = FTSBaseController::getScaledLimitedFTSInput(fts_input_raw);
@@ -217,7 +246,51 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
         FTSBaseController::setForceInput( scaledLimitedFTSInput );
         FTSBaseController::update(current_loop_time_, period);
     }
+    
+    diagnostic_.update();
+}
 
+/// \brief Publishes diagnostics and status
+void FTSAdaptiveForceController::diagnostics(
+    diagnostic_updater::DiagnosticStatusWrapper & status)
+{
+    if (used_vel_based_force_adaption_ || used_ft_type_) {
+        status.summary(0, "Cotroller is adapting parameters");
+    } else {
+        status.summary(1, "Controller is just calling Base");
+    }
+
+    status.add("parameterization", parametrization_active_);
+    status.add("param. step", parameterization_step_names_[parameterization_current_step_]);
+    status.add("param. step initalized", parameterization_step_initalized_);
+    status.add("param. baseForce params stored", baseForce_allParamsStored_);
+
+    status.add("Used Base force type", user_ft_names_[used_ft_type_]);
+    
+    std::string str; 
+    str += std::string(" x: ") + std::to_string(userParametrized_maxFT_[0]);
+    str += std::string(" y: ") + std::to_string(userParametrized_maxFT_[1]);
+    str += std::string(" rot-z: ") + std::to_string(userParametrized_maxFT_[2]);
+    status.add("User Base Force F max", str);
+    str = "";
+    str += std::string(" x: ") + std::to_string(userParametrized_maxVel_[0]);
+    str += std::string(" y: ") + std::to_string(userParametrized_maxVel_[1]);
+    str += std::string(" rot-z: ") + std::to_string(userParametrized_maxVel_[2]);
+    status.add("User Base Force V max", str);
+    
+    status.add("Use Force Based Vel adaption", 
+                velocity_based_adaption_names_[used_vel_based_force_adaption_]);
+    str = "";
+    str += std::string(" x: ") + std::to_string(force_scale_minvel_[0]);
+    str += std::string(" y: ") + std::to_string(force_scale_minvel_[1]);
+    str += std::string(" rot-z: ") + std::to_string(force_scale_minvel_[2]);
+    status.add("Velocity-Based Force min scale", str);
+    str = "";
+    str += std::string(" x: ") + std::to_string(force_scale_maxvel_[0]);
+    str += std::string(" y: ") + std::to_string(force_scale_maxvel_[1]);
+    str += std::string(" rot-z: ") + std::to_string(force_scale_maxvel_[2]);
+    status.add("Velocity-Based Force max scale", str);
+    
 }
 
 void FTSAdaptiveForceController::forceInputToLed( const geometry_msgs::WrenchStamped force_input ) {
@@ -225,7 +298,6 @@ void FTSAdaptiveForceController::forceInputToLed( const geometry_msgs::WrenchSta
         FTSBaseController::forceInputToLed(force_input);
     }
 }
-
 
 /**
  * \brief This function initializes the parameters for the respective parametrization step, which is only executed after initialization is marked true
@@ -239,7 +311,7 @@ void FTSAdaptiveForceController::initParametrizationStep() {
     recalculateFTSOffsets();
 
     //initialize variables
-    switch(currentStep_) {
+    switch(parameterization_current_step_) {
         case baseX:
             resetBaseForceTest();
             baseForce_springConstant_ = springConstant_x_;
@@ -301,7 +373,7 @@ void FTSAdaptiveForceController::initParametrizationStep() {
             adaptX_movementSpeedList_.push_back(getOldVelocityPercent()[0]);
             adaptX_unchangedCtr_ = 0;
             adaptX_testIntervallDuration_ = 1.0;
-            adaption_is_active_ = true;
+            used_vel_based_force_adaption_ = vel_based_StoglZumkeller2020;
             use_smooth_transition_ = true;
             setLegTrackUpdated(false);
             force_scale_minvel_[0] = 1.5;
@@ -321,7 +393,7 @@ void FTSAdaptiveForceController::initParametrizationStep() {
     }
 
     //enable right dimension only and set starting led
-    switch(currentStep_) {
+    switch(parameterization_current_step_) {
         case baseX:
             setActiveDimensions(x_active_);
             break;
@@ -344,7 +416,7 @@ void FTSAdaptiveForceController::initParametrizationStep() {
             setActiveDimensions(all_inactive_);
     }
     FTSBaseController::restartControllerAndOrientWheels(direction);
-    stepInitialized_ = true;
+    parameterization_step_initalized_ = true;
     return;
 }
 
@@ -368,7 +440,7 @@ void FTSAdaptiveForceController::returnRobotAutonomouslyToStartPosition(bool fin
         } else {
             autonomously_returning_velocity = 0.0;
         }
-        switch(currentStep_) {
+        switch(parameterization_current_step_) {
             case baseX:
                 twist_command_.linear.x = -autonomously_returning_velocity;
                 break;
@@ -427,7 +499,7 @@ std::array<double, 3> FTSAdaptiveForceController::baseForceTest( std::array<doub
     // test not completed yet
     double currentVirtualSpringForce = travelledDistance_ * baseForce_springConstant_;
     double userInput = 0.0;
-    switch(currentStep_) {
+    switch(parameterization_current_step_) {
         case baseX:
             userInput = fts_input_raw[0];
             break;
@@ -492,12 +564,15 @@ std::array<double, 3> FTSAdaptiveForceController::baseForceTest( std::array<doub
             baseForce_stableForceCounter_ = 0;
             baseForce_storeRawInput_.clear();
     }
-
-    // sendDebugTopicsParamBase(travelledDistance_, averageDistance, userInput, currentVirtualSpringForce, effectiveForce); // ACTIVATE FOR DEBUG
+    
+    if (debug_) {
+        sendDebugTopicsParamBase(travelledDistance_, averageDistance, userInput,
+                                 currentVirtualSpringForce, effectiveForce);
+    }
 
     //Check phase completion and return spring-modified force input
     if (baseForce_stableForceCounter_ < 120) {
-        switch(currentStep_) {
+        switch(parameterization_current_step_) {
             case baseX:
                     return {effectiveForce, 0.0, 0.0};
             case baseYLeft:
@@ -516,33 +591,33 @@ std::array<double, 3> FTSAdaptiveForceController::baseForceTest( std::array<doub
             double stableForce = std::accumulate(baseForce_storeRawInput_.begin(), baseForce_storeRawInput_.end(), 0.0) / baseForce_storeRawInput_.size();
 
             //set retrieved force as base force for the dimension
-            switch (currentStep_) {
-                    case baseX:
-                            userParametrized_maxFT_[0] = stableForce;
-                            ROS_INFO("[BASE X] - COMPLETED, RECORD - Stable X-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])",
-                                        stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                            break;
-                    case baseYLeft:
-                            userParametrized_maxFT_[1] = stableForce;
-                            ROS_INFO("[BASE Y LEFT] - COMPLETED, RECORD - Stable Y-Left-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])",
-                                        stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                            break;
-                    case baseYRight:
-                            userParametrized_maxFT_[1] = 0.5 * stableForce + 0.5 * userParametrized_maxFT_[1];
-                            ROS_INFO("[BASE Y RIGHT] - COMPLETED, RECORD - Stable Y-Right-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of y-left + y-right)",
-                                        stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                            break;
-                    case baseRotLeft:
-                            userParametrized_maxFT_[2] = std::fabs(stableForce);
-                            ROS_INFO("[BASE ROT LEFT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])",
-                                        std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                            break;
-                    case baseRotRight:
-                            userParametrized_maxFT_[2] = 0.5 *std::fabs(stableForce) + 0.5 * userParametrized_maxFT_[2];
-                            ROS_INFO("[BASE ROT RIGHT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of torque-left + torque-right)",
-                                        std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
-                            baseForce_allParamsStored_ = true;
-                            break;
+            switch (parameterization_current_step_) {
+                case baseX:
+                        userParametrized_maxFT_[0] = stableForce;
+                        ROS_INFO("[BASE X] - COMPLETED, RECORD - Stable X-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])",
+                                    stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                        break;
+                case baseYLeft:
+                        userParametrized_maxFT_[1] = stableForce;
+                        ROS_INFO("[BASE Y LEFT] - COMPLETED, RECORD - Stable Y-Left-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])",
+                                    stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                        break;
+                case baseYRight:
+                        userParametrized_maxFT_[1] = 0.5 * stableForce + 0.5 * userParametrized_maxFT_[1];
+                        ROS_INFO("[BASE Y RIGHT] - COMPLETED, RECORD - Stable Y-Right-Force detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of y-left + y-right)",
+                                    stableForce, userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                        break;
+                case baseRotLeft:
+                        userParametrized_maxFT_[2] = std::fabs(stableForce);
+                        ROS_INFO("[BASE ROT LEFT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f])",
+                                    std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                        break;
+                case baseRotRight:
+                        userParametrized_maxFT_[2] = 0.5 *std::fabs(stableForce) + 0.5 * userParametrized_maxFT_[2];
+                        ROS_INFO("[BASE ROT RIGHT] - COMPLETED, RECORD - Stable Torque detected as %.2f (newBaseForce:[%.2f, %.2f, %.2f] - median of torque-left + torque-right)",
+                                    std::fabs(stableForce), userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+                        baseForce_allParamsStored_ = true;
+                        break;
             }
 
             //adapt max velocity
@@ -550,7 +625,7 @@ std::array<double, 3> FTSAdaptiveForceController::baseForceTest( std::array<doub
             std::array<double,3> oldMaxVel = getMaxVel();
             userParametrized_maxVel_ = oldMaxVel;
             double percentFromOldMax;
-            switch (currentStep_) {
+            switch (parameterization_current_step_) {
                     case baseX:
                             percentFromOldMax = userParametrized_maxFT_[0] / oldMaxFt[0];
                             if ( percentFromOldMax < 1.0 ) {
@@ -722,7 +797,7 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
     }//adaption needed
     adaptX_lastTestTime_ = current_loop_time_;
         //sendDebugTopicsParamAdaptX(avgScale, robotDistDiff); // ACTIVATE FOR DEBUG ONLY
-//     adaptForceScale();
+//     adaptForceScaleBasedOnVelocity();
 }
 
 /**
@@ -732,24 +807,56 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
  * The goal is to have more static behavior when accelerating while allowing for easier keeping high velocities.
  *
  */
-void FTSAdaptiveForceController::adaptForceScale() {
+void FTSAdaptiveForceController::adaptForceScaleBasedOnVelocity() {
 
-//     if (adaption_is_active_) {
-    std::array<double, 3> curr_scale = scaleBetweenValues(force_scale_minvel_, force_scale_maxvel_);
-
+    std::array<double, 3> scale;
     std::array<double, 3> adaptive_max_ft;
+    std::array<double, 3> vel_factor = getOldVelocityPercent();
+    
+    switch (used_vel_based_force_adaption_) {
+        case vel_based_adaption_none:
+            return;
+        case vel_based_damping:
+            std::array<double, 3> damping;
+            for (int i=0; i<3; i++) {
+                damping[i] = damping_adaption_params_.max[i] - (damping_adaption_params_.max[i] - 
+                             damping_adaption_params_.min[i]) * getOldVelocityPercent()[i];
+            }
+            discretizeWithNewMassDamping(pre_adaption_base_params_.mass, damping);
+            break;
+        case vel_based_StoglZumkeller2020:
+//             curr_scale = velocityBasedForceScaling_StoglZumkeller2020(force_scale_minvel_, force_scale_maxvel_);
+//             break;
+            for (int  i = 0; i < 3; i++) {
+                vel_factor[i] = fmin( fabs(vel_factor[i]), 1.0); //velocity percent is now definitely between 0.0 and 1.0
+                if (use_smooth_transition_) {
+                    double steepness = -9.0;
+                    double v_end = std::pow(transition_rate_ + 1.0, steepness);
+                    vel_factor[i] = ( 1.0 - std::pow(vel_factor[i] * transition_rate_ + 1.0, steepness) ) / (1.0 - v_end);
+                }
+            }
+            break;
+        case vel_based_tanh:
+            for (int  i = 0; i < 3; i++) {
+                vel_factor[i] = std::tanh(vel_factor[i] * tanh_adaption_params_.scale[i] * 3.14159);
+            }
+            break;
+    }
+    
     for (int i = 0; i < 3; i++) {
-        adaptive_max_ft[i] = curr_scale[i] * base_max_ft_[i];
+        scale[i] = force_scale_minvel_[i] + ( force_scale_maxvel_[i] - force_scale_minvel_[i] ) * fmin( 1.0, vel_factor[i] );
+        adaptive_max_ft[i] = scale[i] * base_max_ft_[i];
     }
     setMaxFt(adaptive_max_ft);
     if (pub_adaptive_scale_->trylock()) {
-        pub_adaptive_scale_->msg_ = convertToMessage(curr_scale);
+        pub_adaptive_scale_->msg_ = convertToMessage(scale);
         pub_adaptive_scale_->unlockAndPublish();
     }
     if (pub_adaptive_max_ft_->trylock()) {
         pub_adaptive_max_ft_->msg_ = convertToMessage(adaptive_max_ft);
         pub_adaptive_max_ft_->unlockAndPublish();
     }
+    
 //     } else {
 //         ROS_WARN("[ADAPT_Force:OFF]");
 //         resetToBaseValues();
@@ -769,9 +876,9 @@ void FTSAdaptiveForceController::setBaseValues() {
 /**
  * \brief Resets controller values back to their base ones
  */
-void FTSAdaptiveForceController::resetToBaseValues() {
-        setMaxFt(base_max_ft_);
-}
+// void FTSAdaptiveForceController::resetToBaseValues() {
+//         setMaxFt(base_max_ft_);
+// }
 
 /**
  * \brief Returns the current scaling factor based on current velocity and the input values for min and max scale factors
@@ -779,22 +886,21 @@ void FTSAdaptiveForceController::resetToBaseValues() {
  * If the toggle 'use_smooth_transition_' is switched on, the scale is calculated on a different function which puts a higher change-rate towards the lower-end of the velocity (where the robot is normally pushed more often)
  *
  */
-std::array<double, 3> FTSAdaptiveForceController::scaleBetweenValues( std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor ) {
+std::array<double, 3> FTSAdaptiveForceController::velocityBasedForceScaling_StoglZumkeller2020( std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor ) {
 
-        std::array<double, 3> vel_factor = getOldVelocityPercent();
-        std::array<double, 3> scale;
+    std::array<double, 3> vel_factor = getOldVelocityPercent();
+    std::array<double, 3> scale;
 
-        for (int  i = 0; i < 3; i++) {
-
-                vel_factor[i] = fmin( fabs(vel_factor[i]), 1.0); //velocity percent is now definitely between 0.0 and 1.0
-                if (use_smooth_transition_) {
-                        double steepness = -9.0;
-                        double v_end = std::pow(transition_rate_ + 1.0, steepness);
-                        vel_factor[i] = ( 1.0 - std::pow(vel_factor[i] * transition_rate_ + 1.0, steepness) ) / (1.0 - v_end);
-                }
-                scale[i] = minScaleFactor[i] + ( maxScaleFactor[i] - minScaleFactor[i] ) * fmin( 1.0, vel_factor[i] );
+    for (int  i = 0; i < 3; i++) {
+        vel_factor[i] = fmin( fabs(vel_factor[i]), 1.0); //velocity percent is now definitely between 0.0 and 1.0
+        if (use_smooth_transition_) {
+            double steepness = -9.0;
+            double v_end = std::pow(transition_rate_ + 1.0, steepness);
+            vel_factor[i] = ( 1.0 - std::pow(vel_factor[i] * transition_rate_ + 1.0, steepness) ) / (1.0 - v_end);
         }
-        return scale;
+        scale[i] = minScaleFactor[i] + ( maxScaleFactor[i] - minScaleFactor[i] ) * fmin( 1.0, vel_factor[i] );
+    }
+    return scale;
 }
 
 /**
@@ -806,7 +912,7 @@ void FTSAdaptiveForceController::updateTravelledDistance() {
     double timeSinceLastUpdate = (current_loop_time_ - lastDistanceUpdate_).toSec();
     if (timeSinceLastUpdate > 0.0) { //update travelledDistance
         double newDistance = travelledDistance_;
-        switch (currentStep_) {
+        switch (parameterization_current_step_) {
             case baseX:
             case recordFeetDistance:
             case adaptX:
@@ -841,11 +947,11 @@ void FTSAdaptiveForceController::resetTravelledDistance() {
  * \brief Resets the FTSAdaptiveForceController by first resetting the base controller, then storing the base values and finally adapting them by the configured dynamics
  *
  */
-void FTSAdaptiveForceController::resetController() {
-    ROS_DEBUG("[FTS_ADAPT:] Reset");
-    resetToBaseValues();
-    FTSBaseController::resetControllerNew();
-}
+// void FTSAdaptiveForceController::resetController() {
+//     ROS_DEBUG("[FTS_ADAPT:] Reset");
+//     resetToBaseValues();
+//     FTSBaseController::resetControllerNew();
+// }
 
 /**
  * \brief This function resets the parameters for the baseForceTest (when the user abandons the robot mid-test)
@@ -853,7 +959,7 @@ void FTSAdaptiveForceController::resetController() {
  */
 void FTSAdaptiveForceController::resetBaseForceTest() {
 
-//     adaption_is_active_ = false; //should be off here anyways, this is just for additional safety
+//     vel_based_force_adaption_active_ = false; //should be off here anyways, this is just for additional safety
     baseForce_startingTime_ = current_loop_time_;
     baseForce_travelledDistanceList_.clear();
     baseForce_stableForceCounter_ = 0;
@@ -868,38 +974,38 @@ void FTSAdaptiveForceController::switchParametrizationStep(){
     step_finished_time_ = current_loop_time_;
     ROS_DEBUG("[PARAM STEP] - Switch to new Phase");
 
-    switch(currentStep_) {
+    switch(parameterization_current_step_) {
         case baseX:
-            currentStep_ = baseYLeft;
+            parameterization_current_step_ = baseYLeft;
             ROS_INFO("[PARAM STEP - baseYLeft activated! ]");
             break;
         case baseYLeft:
-            currentStep_ = baseYRight;
+            parameterization_current_step_ = baseYRight;
             ROS_INFO("[PARAM STEP - baseYRight activated! ]");
             break;
         case baseYRight:
-            currentStep_ = baseRotLeft;
+            parameterization_current_step_ = baseRotLeft;
             ROS_INFO("[PARAM STEP - baseRotLeft activated! ]");
             break;
         case baseRotLeft:
-            currentStep_ = baseRotRight;
+            parameterization_current_step_ = baseRotRight;
             ROS_INFO("[PARAM STEP - baseRotRight activated! ]");
             break;
         case baseRotRight:
-            currentStep_ = finished;
+            parameterization_current_step_ = finished;
             ROS_INFO("[PARAM STEP - Base force parametrization finished! ]");
             break;
         case recordFeetDistance:
-            currentStep_ = adaptX;
+            parameterization_current_step_ = adaptX;
             ROS_INFO("[PARAM STEP - Feet Distance Recording finished! ]");
             break;
         case adaptX:
-            currentStep_ = finished;
+            parameterization_current_step_ = finished;
             ROS_INFO("[PARAM STEP - Velocity-based force adaption finished! ]");
             break;
         case finished:
             parametrization_active_ = false;
-            currentStep_ = baseX;  // reset for the next time (is it needed?)
+            parameterization_current_step_ = baseX;  // reset for the next time (is it needed?)
             ROS_INFO("[PARAM STEP - Parametrization finished!! All degrees of freedom are activated and resetting parametrization! ]");
             setLEDPhase(controller_led_phases::UNLOCKED);
             break;
@@ -908,7 +1014,7 @@ void FTSAdaptiveForceController::switchParametrizationStep(){
             return;
     }
     resetTravelledDistance();
-    stepInitialized_ = false;
+    parameterization_step_initalized_ = false;
     stepActivated_ = false;
     setSwitchStepRequested(false);
 }
@@ -927,7 +1033,7 @@ void FTSAdaptiveForceController::sendLEDForceTopics() {
     real_wrench_msg.wrench.force.y = 0.0;
     real_wrench_msg.wrench.torque.z = 0.0;
     if (parametrization_active_) {
-        switch (currentStep_) { // disable currently unavailable directions from showing
+        switch (parameterization_current_step_) { // disable currently unavailable directions from showing
             case baseX:
                 real_wrench_msg.wrench.force.x = ledForceInput_;
                 break;
@@ -966,7 +1072,7 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
 //                     ledGoalToSend_ = blinky_goals_.blinkyFreeMovementBlue_;
 //                     return true;
                 case controller_led_phases::WAIT_FOR_INPUT:
-                    switch (currentStep_) {
+                    switch (parameterization_current_step_) {
                         case baseX:
     //                         led_ac_->sendGoal(blinkyStart_x_);
                             ledGoalToSend_ = blinky_goals_.blinkyStart_x_;
@@ -1010,7 +1116,7 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
                     ledGoalToSend_ = blinky_goals_.blinkyWalkBackwards_;
                     return true;
                 case controller_led_phases::SHOW_ADAPTED:
-                    if (currentStep_ == adaptX) {
+                    if (parameterization_current_step_ == adaptX) {
     //                     led_ac_->sendGoal(blinkyPhaseYellow_);
                         ledGoalToSend_ = blinky_goals_.blinkyPhaseYellow_;
                     }
@@ -1020,7 +1126,7 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
                     ledGoalToSend_ = blinky_goals_.blinkyStepAway_;
                     return true;
                 case controller_led_phases::ROBOT_IN_AUTOMATIC_MOVEMENT:
-                    switch (currentStep_) {
+                    switch (parameterization_current_step_) {
                         case baseX:
     //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_x_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_x_;
@@ -1075,7 +1181,7 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
 // //                 led_ac_->sendGoal(blinkyFreeMovementBlue_);
 // //                 return;
 // //             case controller_led_phases::WAIT_FOR_INPUT:
-// //                 switch (currentStep_) {
+// //                 switch (parameterization_current_step_) {
 // //                     case baseX:
 // //                         led_ac_->sendGoal(blinkyStart_x_);
 // //                         return;
@@ -1109,7 +1215,7 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
 // //                     led_ac_->sendGoal(blinkyWalkBackwards_);
 // //                     return;
 // //             case controller_led_phases::SHOW_ADAPTED:
-// //                 if (currentStep_ == adaptX) {
+// //                 if (parameterization_current_step_ == adaptX) {
 // //                     led_ac_->sendGoal(blinkyPhaseYellow_);
 // //                 }
 // //                 break;
@@ -1117,7 +1223,7 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
 // //                     led_ac_->sendGoal(blinkyStepAway_);
 // //                     return;
 // //             case controller_led_phases::ROBOT_IN_AUTOMATIC_MOVEMENT:
-// //                 switch (currentStep_) {
+// //                 switch (parameterization_current_step_) {
 // //                     case baseX:
 // //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_x_);
 // //                         return;
@@ -1156,7 +1262,7 @@ void FTSAdaptiveForceController::sendDebugTopicsParamBase( double travelledDist,
         //debug topic messages
         geometry_msgs::Twist averageDist_msg, virtSpring_msg, currentRawForce_msg, resForce_msg, currentDist_msg;
 
-        switch(currentStep_) {
+        switch(parameterization_current_step_) {
             case baseX:
                 averageDist_msg.linear.x = averageDist;
                 virtSpring_msg.linear.x = currentVirtSpringForce;
@@ -1191,6 +1297,7 @@ void FTSAdaptiveForceController::sendDebugTopicsParamBase( double travelledDist,
                 currentRawForce_msg.angular.y = raw_input;
                 resForce_msg.angular.y = effectiveForce;
                 currentDist_msg.angular.y = travelledDist;
+                break;
         }
         if (pub_base_averageDist_->trylock()) {
             pub_base_averageDist_->msg_ = averageDist_msg;
@@ -1243,6 +1350,9 @@ void FTSAdaptiveForceController::sendDebugTopicsParamAdaptX( double currentScale
  * \brief Dynamic reconfigure Callback function for the controller
  */
 void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FTSAdaptiveForceControllerConfig &config, uint32_t level) {
+    
+    std::string lock = "adaptive_reconfigure_callback";
+    protectedToggleControllerRunning(false, lock);
 
     if (use_passive_behavior_ctrlr_ != config.use_passive_behavior_ctrlr) {
         use_passive_behavior_ctrlr_ = config.use_passive_behavior_ctrlr;
@@ -1250,86 +1360,108 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
         ROS_INFO_COND(!use_passive_behavior_ctrlr_, "[ADAPT] - Disabling passive behavior control!");
     }
 
-    adaption_is_active_ = config.use_velocity_adaptive_force;
-
     //switch between standard ft/velocity values and user-parametrized values
-
-    int used_ft_type = config.max_ft_values_used;
-    if (used_ft_type == 1) {
-        if (baseForce_allParamsStored_) {
-                useUserParametrizedValues(true);
-        } else {
-                ROS_WARN("Please use ParametrizeBase before attempting to use the user-defined values!");
-        }
-    } else {
+    used_ft_type_ = static_cast<base_force_type>(config.max_ft_values_used);
+    
+    switch (used_ft_type_) {
+        case standard_ft:
             useUserParametrizedValues(false);
+            break;
+        case user_ft:
+            if (baseForce_allParamsStored_) {
+                useUserParametrizedValues(true);
+            } else {
+                ROS_WARN("Please use ParametrizeBase before attempting to use the user-defined values!");
+                config.max_ft_values_used = 0;
+            }
+            break;
+    }
+    
+    if (used_vel_based_force_adaption_ != config.velocity_based_force_adaption_used)
+    {
+        if (used_vel_based_force_adaption_ != vel_based_adaption_none) {
+            pre_adaption_base_params_.gain = getGain();
+            pre_adaption_base_params_.time_const = getTimeConst();
+            pre_adaption_base_params_.damping = getDamping();
+            pre_adaption_base_params_.mass = getMass();
+        }
+        if (used_vel_based_force_adaption_ == vel_based_damping) {
+            discretizeWithNewParameters(pre_adaption_base_params_.time_const,
+                                        pre_adaption_base_params_.gain);
+        }
+        // velocity based force adaption configuraion
+        used_vel_based_force_adaption_ = static_cast<velocity_based_adaption_type>(
+            config.velocity_based_force_adaption_used);
+    }
+    
+    if (config.apply_vel_adaption_params) {
+
+        ROS_INFO("[ADAPT]: Changing parameters according to dynamic reconfigure inputs");
+//         stopController();
+
+        // vel_based_StoglZumkeller2020
+        force_scale_minvel_[0] = config.force_scale_minvel_x;
+        force_scale_minvel_[1] = config.force_scale_minvel_y;
+        force_scale_minvel_[2] = config.force_scale_minvel_rot;
+        force_scale_maxvel_[0] = config.force_scale_maxvel_x;
+        force_scale_maxvel_[1] = config.force_scale_maxvel_y;
+        force_scale_maxvel_[2] = config.force_scale_maxvel_rot;
+        use_smooth_transition_ = config.use_smooth_transition;
+        transition_rate_ = config.transition_rate;
+//         resetToBaseValues();
+//         resetController();
+        
+        // tanh
+        tanh_adaption_params_.scale[0] = config.tanh_scale_x;
+        tanh_adaption_params_.scale[1] = config.tanh_scale_y;
+        tanh_adaption_params_.scale[2] = config.tanh_scale_z;
+        
+        // damping
+        damping_adaption_params_.min[0] = config.damping_min_x;
+        damping_adaption_params_.min[1] = config.damping_min_y;
+        damping_adaption_params_.min[2] = config.damping_min_z;
+        damping_adaption_params_.max[0] = config.damping_max_x;
+        damping_adaption_params_.max[1] = config.damping_max_y;
+        damping_adaption_params_.max[2] = config.damping_max_z;
+        
+        config.apply_vel_adaption_params = false;
     }
 
     //parametrization reconfigure part
-    if (config.enable_parametrization_changes) {
-        config.groups.user_parametrization_functionalities.state = true;
-
-        if (!parametrization_active_) { //enable change of parametrization parameters
-            ROS_INFO("[ADAPT - Parametrization]: Updating parametrization parameters.");
-            baseForce_movingAverageTimeframe_ = config.movingAverageTimeframe;
-            baseForce_holdingDistance_ = config.holdingDistance;
-            minLegDistance_ = config.minLegDistance;
-            maxLegDistance_ = config.maxLegDistance;
-            adaptive_parametrization_adaptionRate_ = config.adaptionRate;
-        } else {
-            ROS_DEBUG("[ADAPT - Parametrization]: Unable to update parametrization parameters because it is currently active!");
-        }
-
-        if (!parametrization_active_ && config.activate_force_parametrization) {
-            ROS_INFO("[ADAPT - Parametrization] - Activating User Force Parametrization.");
-            parametrization_active_ = true;
-            config.parameterization_activated = true;
-            currentStep_ = baseX;
-            setSwitchStepRequested(false);
-            stepInitialized_ = false;
-        } else if (!parametrization_active_ && config.activate_adaptive_scale_parametrization) {
-            ROS_INFO("[ADAPT - Parametrization]  - Activating Adaptive Scale parametrization.");
-            parametrization_active_ = true;
-            config.parameterization_activated = true;
-            currentStep_ = recordFeetDistance;
-            stepInitialized_ = false;
-            setSwitchStepRequested(false);
-        } else if (parametrization_active_ && !config.parameterization_activated) {
-            currentStep_ = finished;
-            stepInitialized_ = false;
-            setSwitchStepRequested(false);
-        }
-        config.activate_force_parametrization = false;
-        config.activate_adaptive_scale_parametrization = false;
+    if (!parametrization_active_) { //enable change of parametrization parameters
+        ROS_INFO("[ADAPT - Parametrization]: Updating parametrization parameters.");
+        baseForce_movingAverageTimeframe_ = config.movingAverageTimeframe;
+        baseForce_holdingDistance_ = config.holdingDistance;
+        minLegDistance_ = config.minLegDistance;
+        maxLegDistance_ = config.maxLegDistance;
+        adaptive_parametrization_adaptionRate_ = config.adaptionRate;
     } else {
-        config.groups.user_parametrization_functionalities.state = false;
+        ROS_DEBUG("[ADAPT - Parametrization]: Unable to update parametrization parameters because it is currently active!");
     }
 
-    //velocity adaptive feature reconfigure part
-    if (config.enable_velocity_adaption_changes) {
-            config.groups.velocity_adaptive_feature_parameters.state = true;
-
-        ROS_INFO("[ADAPT]: Changing parameters according to dynamic reconfigure inputs");
-        stopController();
-
-        if (adaption_is_active_) {
-            ROS_INFO("[ADAPT_Force: ON]");
-            force_scale_minvel_[0] = config.force_scale_minvel_x;
-            force_scale_minvel_[1] = config.force_scale_minvel_y;
-            force_scale_minvel_[2] = config.force_scale_minvel_rot;
-            force_scale_maxvel_[0] = config.force_scale_maxvel_x;
-            force_scale_maxvel_[1] = config.force_scale_maxvel_y;
-            force_scale_maxvel_[2] = config.force_scale_maxvel_rot;
-            use_smooth_transition_ = config.use_smooth_transition;
-            transition_rate_ = config.transition_rate;
-            ROS_INFO_COND(use_smooth_transition_ && adaption_is_active_, "[ADAPT]: Using Smooth Transition");
-        }
-        resetController();
-
-    } else {
-            config.groups.velocity_adaptive_feature_parameters.state = false;
+    if (!parametrization_active_ && config.activate_force_parametrization) {
+        ROS_INFO("[ADAPT - Parametrization] - Activating User Force Parametrization.");
+        parametrization_active_ = true;
+        config.parameterization_activated = true;
+        parameterization_current_step_ = baseX;
+        setSwitchStepRequested(false);
+        parameterization_step_initalized_ = false;
+    } else if (!parametrization_active_ && config.activate_adaptive_scale_parametrization) {
+        ROS_INFO("[ADAPT - Parametrization]  - Activating Adaptive Scale parametrization.");
+        parametrization_active_ = true;
+        config.parameterization_activated = true;
+        parameterization_current_step_ = recordFeetDistance;
+        parameterization_step_initalized_ = false;
+        setSwitchStepRequested(false);
+    } else if (parametrization_active_ && !config.parameterization_activated) {
+        parameterization_current_step_ = finished;
+        parameterization_step_initalized_ = false;
+        setSwitchStepRequested(false);
     }
-
+    config.activate_force_parametrization = false;
+    config.activate_adaptive_scale_parametrization = false;
+    
+    protectedToggleControllerRunning(true, lock);
 }
 
 /**
@@ -1337,11 +1469,16 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
  */
 void FTSAdaptiveForceController::useUserParametrizedValues(bool enable) {
     if (enable && baseForce_allParamsStored_) {
-        ROS_INFO("Using userParametrized Force/Velocity values: [%.2f, %.2f, %.2f]", userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2]);
+        ROS_INFO("Using userParametrized Force values: [%.2f, %.2f, %.2f], and Velocity values: [%.2f, %.2f, %.2f]", 
+            userParametrized_maxFT_[0], userParametrized_maxFT_[1], userParametrized_maxFT_[2],
+            userParametrized_maxVel_[0], userParametrized_maxVel_[1], userParametrized_maxVel_[2]          );
         setMaxFt(userParametrized_maxFT_);
         setMaxVel(userParametrized_maxVel_);
     } else {
-        ROS_INFO("Using standard Force/Velocity values: [%.2f, %.2f, %.2f]", standard_maxFT_[0], standard_maxFT_[1], standard_maxFT_[2]);
+        ROS_INFO("Using standard Force values: [%.2f, %.2f, %.2f], and Velocity values: [%.2f, %.2f, %.2f]",
+            standard_maxFT_[0], standard_maxFT_[1], standard_maxFT_[2],
+            standard_maxVel_[0], standard_maxVel_[1], standard_maxVel_[2]
+        );
         setMaxFt(standard_maxFT_);
         setMaxVel(standard_maxVel_);
     }

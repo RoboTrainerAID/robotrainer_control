@@ -3,6 +3,8 @@
 
 #include <numeric>
 
+#include <diagnostic_updater/diagnostic_updater.h>
+
 #include <robotrainer_controllers/fts_controller.h>
 #include <robotrainer_controllers/passive_behavior_controller.h>
 
@@ -39,7 +41,9 @@ protected:
 
 private:
     dynamic_reconfigure::Server<robotrainer_controllers::FTSAdaptiveForceControllerConfig>* fts_adaptive_dysrv_;
-
+    
+    diagnostic_updater::Updater diagnostic_;
+    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
 
     //enable/disable parameter changes on dynamic reconfigure service
     bool enableParameterChanges_;
@@ -49,13 +53,31 @@ private:
 
     //for parametrization
     bool parametrization_active_;
-    bool stepInitialized_; //set step to initialized
+    bool parameterization_step_initalized_; //set step to initialized
     bool stepActivated_; //set step to activated after intialization and user-gripping
     enum parametrizationStepTag_{ baseX, baseYLeft, baseYRight, baseRotLeft, baseRotRight, recordFeetDistance, adaptX, finished };
-    parametrizationStepTag_ currentStep_;
+    const std::vector<std::string> parameterization_step_names_ = {"baseX", "baseYLeft", "baseYRight", "baseRotLeft", "baseRotRight", "recordFeetDistance", "adaptX", "finished"};
+    parametrizationStepTag_ parameterization_current_step_;
     ros::Time last_gripped_time_;
     bool switchStepRequested_;
     ros::Time step_finished_time_;
+    
+    enum base_force_type{ standard_ft, user_ft };
+    const std::vector<std::string> user_ft_names_ = {"standard", "user"};
+    base_force_type used_ft_type_ = standard_ft;
+    
+    enum velocity_based_adaption_type{ vel_based_adaption_none, vel_based_StoglZumkeller2020, vel_based_tanh, vel_based_damping };
+    const std::vector<std::string> velocity_based_adaption_names_ = {"none", "StoglZumkeller2020", "tanh", "damping"};
+    velocity_based_adaption_type used_vel_based_force_adaption_ = vel_based_adaption_none;
+    
+    struct tanh_adaption_params {
+        std::array<double, 3> scale;
+    } tanh_adaption_params_;
+    
+    struct damping_adaption_params {
+        std::array<double, 3> min; 
+        std::array<double, 3> max; 
+    } damping_adaption_params_;
 
 
     //to store average forces
@@ -96,6 +118,13 @@ private:
     //standard force and velocity values (to be able to reset)
     std::array<double, 3> standard_maxFT_;
     std::array<double, 3> standard_maxVel_;
+    
+    struct pre_adaption_base_params {
+        std::array<double, 3> gain;
+        std::array<double, 3> time_const;
+        std::array<double, 3> mass;
+        std::array<double, 3> damping;
+    } pre_adaption_base_params_;
 
     bool baseForce_testCompleted_;
 
@@ -154,7 +183,7 @@ private:
     //general debug
     realtime_tools::RealtimePublisher<geometry_msgs::Vector3> *pub_force_adapt_limited_input_, *pub_adaptive_scale_, *pub_adaptive_max_ft_;
 
-    bool adaption_is_active_;
+    bool non_standard_max_forces_;
     std::array<double, 3> base_max_ft_;
     bool use_smooth_transition_; //for interpolation cutoff at lower than 100% velocity
     double transition_rate_;
@@ -179,13 +208,14 @@ private:
 
     void returnRobotAutonomouslyToStartPosition(bool finished_successfully);
 
-    void adaptForceScale();
+    void adaptForceScaleBasedOnVelocity();
     void setBaseValues();
     void resetToBaseValues();
 
     void legTrackCallback(const leg_tracker::PersonMsg::ConstPtr& msg);
 
-    std::array<double, 3> scaleBetweenValues(std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor);
+    std::array<double, 3> velocityBasedForceScaling_StoglZumkeller2020(
+        std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor);
 
     void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
     void sendLEDForceTopics();
