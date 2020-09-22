@@ -1,0 +1,16 @@
+# 1 Omnidrectional
+# 2 Differential: Differential-drive behaviour.
+# 3 Synchro: Synchro-drive behaviour. I.e. no rotation, only translation.
+# 4 Ackermann
+# 5 Pivot: Revolve around a certain point.
+# In case the implementation changes but this does not get updated, or for more 
+# modes, look into UndercarriageDriveMode::config.
+int16 mode
+
+# See the DriveModeParameters.msg file.
+DriveModeParameters params
+---
+# These fields are used to return current settings upon valid input. The
+# parameters may differ from input, even though the input was valid.
+int16 mode
+DriveModeParameters params

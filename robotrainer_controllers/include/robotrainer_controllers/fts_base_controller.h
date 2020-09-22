@@ -47,11 +47,10 @@
 #include <dynamic_reconfigure/Reconfigure.h>
 #include <dynamic_reconfigure/Config.h>
 
+#include "robotrainer_controllers/undercarriage_drive_mode_service.h"
 #include <realtime_tools/realtime_publisher.h>
 
 // TODO(GLOBAL):  use smart pointers
-
-// #include <std::runtime
 
 namespace robotrainer_controllers {
 
@@ -326,7 +325,6 @@ protected:
         pub_resulting_force_after_counterforce_;
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
         pub_resulting_force_after_cor_;
-        
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
         pub_input_force_force_for_gui_;
 
@@ -491,9 +489,10 @@ protected:
 
 
 protected:
-    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
-    
     bool debug_;
+    UndercarriageDriveMode * ucdm_;
+
+    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
 
 private:
     boost::mutex controller_internal_states_mutex_;

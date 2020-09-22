@@ -160,6 +160,8 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     
 //     createModalityInstances();
 
+    ucdm_ = new UndercarriageDriveMode(root_nh);
+
     apply_areal_counterforce_ = false;
 
     base_initialized_ = WheelControllerBase::setup(root_nh, wheel_ctrl_nh_);
@@ -289,6 +291,8 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         if (modalities_used_ != none && userIsGripping()) {
             new_vel = applyModalities(new_vel, force_input_);
         }
+        
+        ucdm_->apply(new_vel[0], new_vel[1], new_vel[2]);
         
         if (debug_) {
             if (pub_final_velocity_->trylock()) {

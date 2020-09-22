@@ -3,6 +3,7 @@ project(robotrainer_controllers)
 
 # Load catkin and all dependencies required for this package
 find_package(catkin REQUIRED COMPONENTS
+    visualization_msgs
     cob_base_controller_utils
     cob_omni_drive_controller
     controller_interface
@@ -18,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
     robotrainer_modalities
     robotrainer_helper_types
     std_msgs
+    std_srvs
     tf2
     tf2_geometry_msgs
     tf2_ros
@@ -55,6 +57,17 @@ if (Cpp11CompilerFlag)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif()
 
+add_message_files(
+  FILES 
+  DriveModeParameters.msg 
+  VirtualAxle.msg 
+  CastorParams.msg 
+  ICR.msg 
+  A_and_b.msg
+)
+add_service_files(FILES ucdm_cmd.srv)
+generate_messages()
+
 ###################################
 ## catkin specific configuration ##
 ###################################
@@ -83,6 +96,20 @@ add_library(${PROJECT_NAME}
   src/odometry_controller.cpp
   src/passive_behavior_controller.cpp
   src/twist_controller.cpp
+
+  src/undercarriage_drive_mode_service.cpp
+  src/drive_modes/drive_mode_base_class.cpp
+  src/drive_modes/omnidirectional.cpp
+  src/drive_modes/differential.cpp
+  src/drive_modes/differential_with_matrices.cpp
+  src/drive_modes/ackermann.cpp
+  src/drive_modes/ackermann_smoother.cpp
+  src/drive_modes/synchro.cpp
+  src/drive_modes/omni_with_max_accel.cpp
+  src/drive_modes/pivot.cpp
+  src/drive_modes/dead_reckon.cpp
+  src/drive_modes/line2dof.cpp
+  src/drive_modes/AxPLUSb.cpp
 )
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg  ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -100,7 +127,7 @@ install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-install(DIRECTORY include/${PROJECT_NAME}/
+install(DIRECTORY include/${PROJECT_NAME}/ include/drive_modes/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
