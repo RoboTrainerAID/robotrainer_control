@@ -922,22 +922,34 @@ std::array<double, 3> FTSBaseController::applyAreaCounterforce(std::array<double
 /**
  / ** \brief This function adapts the center of rotation (CoR) for the robot by the given global values of cor_x_ and cor_y_. This effectively allowes the robot to follow a circle with defined radius when pushing it in x-direction only (when modifying cor_y_ to values other than zero.). This also allowes the robot to tip around its front or back when moving it around its rotation axis (when changing the cor_x_ value). Furthermore, a slight change of the CoR allowes the robot to adapt to users having a slightly varying force between both hands by compensating the weaker hand by shifting the cor_y_ towards the stronger hand, effectively reducing its influence.
  */
-std::array<double, 3> FTSBaseController::adaptCenterOfRotation(std::array<double, 3> fts_input_raw) {
-
-        double changedTorque = fts_input_raw[0] * cor_y_ - fts_input_raw[1] * cor_x_ + fts_input_raw[2];
+std::array<double, 3> FTSBaseController::adaptCenterOfRotation(std::array<double, 3> fts_input_raw)
+{
         std::array<double, 3> changedInput;
-        ROS_DEBUG("Changed torque from: %.2f to %.2f (Change: %f)", fts_input_raw[2], changedTorque, std::fabs(fts_input_raw[2]-changedTorque));
+        changedInput[2] = fts_input_raw[2] + 
+                               fts_input_raw[0] * cor_y_ - fts_input_raw[1] * cor_x_;
         changedInput[0] = fts_input_raw[0];
         changedInput[1] = fts_input_raw[1];
-        changedInput[2] = changedTorque;
+        // REMOVE: This under probably does not make any sense
+        // X
+//         if (std::fabs(cor_y_) < 0.1) {            
+//             changedInput[0] = fts_input_raw[0];
+//         } else {
+//             changedInput[0] = fts_input_raw[0] - fts_input_raw[2]/cor_y_;
+//         }
+        // Y
+//         if (std::fabs(cor_x_) < 0.1) {
+//             changedInput[1] = fts_input_raw[1];
+//         } else {
+//             changedInput[1] = fts_input_raw[1] - fts_input_raw[2]/cor_x_;
+//         }
         return changedInput;
 }
 
 /**
 * \brief Discretizes the input values of the PT1-element so that they can be used in the update loop
 */
-void FTSBaseController::discretizeController() {
-
+void FTSBaseController::discretizeController()
+{
         for (int i = 0; i < 3; i++) {
                 a1_[i] = exp( -1.0 / (controllerUpdateRate_ * time_const_[i]) );
                 b1_[i] = gain_[i] * (1.0 - a1_[i]);
