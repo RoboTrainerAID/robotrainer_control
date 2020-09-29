@@ -475,7 +475,7 @@ void RobotrainerEditorPanel::setDoNothing() {
 void RobotrainerEditorPanel::recordSinglePoint() {
     geometry_msgs::TransformStamped transform_ee_base_stamped;
     try {
-        transform_ee_base_stamped = p_tfBuffer->lookupTransform("map", "base_link", ros::Time(0), ros::Duration(1.0));
+        transform_ee_base_stamped = p_tfBuffer->lookupTransform("map", params->path_record_frame_id, ros::Time(0), ros::Duration(1.0));
     } catch (tf2::TransformException ex ) {
         ROS_ERROR("lookupTransform failed! Current point is not saved.");
         return;

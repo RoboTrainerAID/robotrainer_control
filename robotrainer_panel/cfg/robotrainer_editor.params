@@ -36,7 +36,8 @@ gen.add("robot_odometry_topic", paramtype="std::string", description="topic on w
 
 gen.add("frame_id", paramtype="std::string", description="#TODO", default="map") #TODO description
 gen.add("config_path", paramtype="std::string", description="#TODO", default="~") #TODO description
+gen.add("path_record_frame_id", paramtype="std::string", description="Frame ID where the points for a new path are recorded", default="robotrainer_front_marker")
 gen.add("menu_id", paramtype="int", description="#TODO", default=1) #TODO description
-gen.add("robot_name", paramtype="std::string", description="name of the robot", default="sr2")
+gen.add("robot_name", paramtype="std::string", description="name of the robot", default="rt2")
 
 exit(gen.generate("robotrainer_panel", "handler_params", "robotrainer_editor"))
