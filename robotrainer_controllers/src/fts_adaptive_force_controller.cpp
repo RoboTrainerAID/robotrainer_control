@@ -254,7 +254,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
 void FTSAdaptiveForceController::diagnostics(
     diagnostic_updater::DiagnosticStatusWrapper & status)
 {
-    if (used_vel_based_force_adaption_ || used_ft_type_) {
+    if (used_vel_based_force_adaption_ || used_ft_type_ || parametrization_active_) {
         status.summary(0, "Cotroller is adapting parameters");
     } else {
         status.summary(1, "Controller is just calling Base");
@@ -383,7 +383,9 @@ void FTSAdaptiveForceController::initParametrizationStep() {
             force_scale_maxvel_[1] = 0.35;
             force_scale_maxvel_[2] = 0.35;
             footDistance_lastTravelledDist_ = 0.0;
-            // sendDebugTopicsParamAdaptX(1.0, 0.0);  //ACTIVATE FOR DEBUG ONLY
+            if (debug_) {
+                sendDebugTopicsParamAdaptX(1.0, 0.0);
+            }
             ROS_DEBUG_THROTTLE(1, "[ADAPT X] - INIT - X-Adaptive initialized !");
             break;
         case finished:
@@ -841,6 +843,11 @@ void FTSAdaptiveForceController::adaptForceScaleBasedOnVelocity() {
                 vel_factor[i] = std::tanh(vel_factor[i] * tanh_adaption_params_.scale[i] * 3.14159);
             }
             break;
+        case linear_force:
+
+            break;
+        case non_linear_damping:
+            break;
     }
     
     for (int i = 0; i < 3; i++) {
@@ -856,11 +863,6 @@ void FTSAdaptiveForceController::adaptForceScaleBasedOnVelocity() {
         pub_adaptive_max_ft_->msg_ = convertToMessage(adaptive_max_ft);
         pub_adaptive_max_ft_->unlockAndPublish();
     }
-    
-//     } else {
-//         ROS_WARN("[ADAPT_Force:OFF]");
-//         resetToBaseValues();
-//     }
 }
 
 
@@ -873,12 +875,6 @@ void FTSAdaptiveForceController::setBaseValues() {
     base_max_ft_ = getMaxFt();
 }
 
-/**
- * \brief Resets controller values back to their base ones
- */
-// void FTSAdaptiveForceController::resetToBaseValues() {
-//         setMaxFt(base_max_ft_);
-// }
 
 /**
  * \brief Returns the current scaling factor based on current velocity and the input values for min and max scale factors
@@ -942,16 +938,6 @@ void FTSAdaptiveForceController::resetTravelledDistance() {
         travelledDistance_ = 0.0;
         lastDistanceUpdate_ = current_loop_time_;
 }
-
-/**
- * \brief Resets the FTSAdaptiveForceController by first resetting the base controller, then storing the base values and finally adapting them by the configured dynamics
- *
- */
-// void FTSAdaptiveForceController::resetController() {
-//     ROS_DEBUG("[FTS_ADAPT:] Reset");
-//     resetToBaseValues();
-//     FTSBaseController::resetControllerNew();
-// }
 
 /**
  * \brief This function resets the parameters for the baseForceTest (when the user abandons the robot mid-test)
@@ -1067,192 +1053,80 @@ bool FTSAdaptiveForceController::setLEDPhase(controller_led_phases requestPhase)
     
         if (requestPhase != controller_led_phases::SHOW_FORCE) {
             switch (requestPhase) {
-//                 case controller_led_phases::UNLOCKED:
-    //                 led_ac_->sendGoal(blinkyFreeMovementBlue_);
-//                     ledGoalToSend_ = blinky_goals_.blinkyFreeMovementBlue_;
-//                     return true;
                 case controller_led_phases::WAIT_FOR_INPUT:
                     switch (parameterization_current_step_) {
                         case baseX:
-    //                         led_ac_->sendGoal(blinkyStart_x_);
                             ledGoalToSend_ = blinky_goals_.blinkyStart_x_;
                             return true;
                         case baseYLeft:
-    //                         led_ac_->sendGoal(blinkyStart_y_left_);,
                             ledGoalToSend_ = blinky_goals_.blinkyStart_y_left_;
                             return true;
                         case baseYRight:
-    //                         led_ac_->sendGoal(blinkyStart_y_right_);
                             ledGoalToSend_ = blinky_goals_.blinkyStart_y_right_;
                             return true;
                         case baseRotLeft:
-    //                         led_ac_->sendGoal(blinkyStart_rot_left_);
                             ledGoalToSend_ = blinky_goals_.blinkyStart_rot_left_;
                             return true;
                         case baseRotRight:
-    //                         led_ac_->sendGoal(blinkyStart_rot_right_);
                             ledGoalToSend_ = blinky_goals_.blinkyStart_rot_right_;
                             return true;
                         case recordFeetDistance:
                             if (!fwd_footDistanceRecorded_) {
-    //                             led_ac_->sendGoal(blinkyStart_x_);
                                 ledGoalToSend_ = blinky_goals_.blinkyStart_x_;
                             } else {
-    //                             led_ac_->sendGoal(blinkyStart_x_back_);
                                 ledGoalToSend_ = blinky_goals_.blinkyStart_x_back_;
                             }
                             return true;
                         case adaptX:
-    //                         led_ac_->sendGoal(blinkyStartGreen_);
                             ledGoalToSend_ = blinky_goals_.blinkyStartGreen_;
                             return true;
                     }
                 case controller_led_phases::WALK_FORWARD:
-    //                 led_ac_->sendGoal(blinkyWalkForward_);
                     ledGoalToSend_ = blinky_goals_.blinkyWalkForward_;
                     return true;
                 case controller_led_phases::WALK_BACKWARDS:
-    //                 led_ac_->sendGoal(blinkyWalkBackwards_);
                     ledGoalToSend_ = blinky_goals_.blinkyWalkBackwards_;
                     return true;
                 case controller_led_phases::SHOW_ADAPTED:
                     if (parameterization_current_step_ == adaptX) {
-    //                     led_ac_->sendGoal(blinkyPhaseYellow_);
                         ledGoalToSend_ = blinky_goals_.blinkyPhaseYellow_;
                     }
                     break;
                 case controller_led_phases::STEP_AWAY_FROM_ROBOT:
-    //                 led_ac_->sendGoal(blinkyStepAway_);
                     ledGoalToSend_ = blinky_goals_.blinkyStepAway_;
                     return true;
                 case controller_led_phases::ROBOT_IN_AUTOMATIC_MOVEMENT:
                     switch (parameterization_current_step_) {
                         case baseX:
-    //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_x_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_x_;
                             return true;
                         case baseYLeft:
-    //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_y_left_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_y_left_;
                             return true;
                         case baseYRight:
-    //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_y_right_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_y_right_;
                             return true;
                         case baseRotLeft:
-    //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_rot_left_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_rot_left_;
                             return true;
                         case baseRotRight:
-    //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_rot_right_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_rot_right_;
                             return true;
                         case recordFeetDistance:
                         case adaptX:
-    //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_);
                             ledGoalToSend_ = blinky_goals_.blinkyRobotAutomaticMovement_;
                             return true;
                         }
                 case controller_led_phases::ALMOST_RETURNED:
-    //                 led_ac_->sendGoal(blinkyAlmostFinishedRed_);
                     ledGoalToSend_ = blinky_goals_.blinkyAlmostFinishedRed_;
                     return true;
                 case controller_led_phases::PHASE_FINISHED:
-    //                 led_ac_->sendGoal(blinkyFinishedRed_);
                     ledGoalToSend_ = blinky_goals_.blinkyFinishedRed_;
                     return true;
             }
         }
     }
 }
-
-/**
- * \brief sends the LED output which is defined by the currently active led_phase_ enum
- */
-// void FTSAdaptiveForceController::sendLEDOutput() {
-// 
-//     if (currentLEDPhase_ == controller_led_phases::SHOW_FORCE) {
-//         sendLEDForceTopics();
-//     } else if (sendLEDGoal_) {
-//         sendLEDGoal_ = false; //to only send it once the phase has changed
-//         led_ac_->sendGoal(ledGoalToSend_);
-// //         switch (currentLEDPhase_) {
-// //             case controller_led_phases::UNLOCKED:
-// //                 led_ac_->sendGoal(blinkyFreeMovementBlue_);
-// //                 return;
-// //             case controller_led_phases::WAIT_FOR_INPUT:
-// //                 switch (parameterization_current_step_) {
-// //                     case baseX:
-// //                         led_ac_->sendGoal(blinkyStart_x_);
-// //                         return;
-// //                     case baseYLeft:
-// //                             led_ac_->sendGoal(blinkyStart_y_left_);
-// //                             return;
-// //                     case baseYRight:
-// //                             led_ac_->sendGoal(blinkyStart_y_right_);
-// //                             return;
-// //                     case baseRotLeft:
-// //                             led_ac_->sendGoal(blinkyStart_rot_left_);
-// //                             return;
-// //                     case baseRotRight:
-// //                             led_ac_->sendGoal(blinkyStart_rot_right_);
-// //                             return;
-// //                     case recordFeetDistance:
-// //                         if (!fwd_footDistanceRecorded_) {
-// //                                 led_ac_->sendGoal(blinkyStart_x_);
-// //                         } else {
-// //                                 led_ac_->sendGoal(blinkyStart_x_back_);
-// //                         }
-// //                         return;
-// //                     case adaptX:
-// //                         led_ac_->sendGoal(blinkyStartGreen_);
-// //                         return;
-// //                 }
-// //             case controller_led_phases::WALK_FORWARD:
-// //                     led_ac_->sendGoal(blinkyWalkForward_);
-// //                     return;
-// //             case controller_led_phases::WALK_BACKWARDS:
-// //                     led_ac_->sendGoal(blinkyWalkBackwards_);
-// //                     return;
-// //             case controller_led_phases::SHOW_ADAPTED:
-// //                 if (parameterization_current_step_ == adaptX) {
-// //                     led_ac_->sendGoal(blinkyPhaseYellow_);
-// //                 }
-// //                 break;
-// //             case controller_led_phases::STEP_AWAY_FROM_ROBOT:
-// //                     led_ac_->sendGoal(blinkyStepAway_);
-// //                     return;
-// //             case controller_led_phases::ROBOT_IN_AUTOMATIC_MOVEMENT:
-// //                 switch (parameterization_current_step_) {
-// //                     case baseX:
-// //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_x_);
-// //                         return;
-// //                     case baseYLeft:
-// //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_y_left_);
-// //                         return;
-// //                     case baseYRight:
-// //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_y_right_);
-// //                         return;
-// //                     case baseRotLeft:
-// //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_rot_left_);
-// //                         return;
-// //                     case baseRotRight:
-// //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_rot_right_);
-// //                         return;
-// //                     case recordFeetDistance:
-// //                     case adaptX:
-// //                         led_ac_->sendGoal(blinkyRobotAutomaticMovement_);
-// //                         return;
-// //                     }
-// //             case controller_led_phases::ALMOST_RETURNED:
-// //                     led_ac_->sendGoal(blinkyAlmostFinishedRed_);
-// //                     return;
-// //             case controller_led_phases::PHASE_FINISHED:
-// //                     led_ac_->sendGoal(blinkyFinishedRed_);
-// //                     return;
-// //         }
-//     }
-// }
 
 /**
  * \brief debug function which pushes debug messages regarding the process of 'parametrizeBaseX', e.g. current distance to startpoint or springforce and resulting force

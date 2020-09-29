@@ -8,8 +8,8 @@ UCDM::UCDM(ros::NodeHandle& root_nh) {
                                          &UCDM::config, this);
 }
 
-bool UCDM::config(robotrainer_controllers::ucdm_cmd::Request& req,
-                  robotrainer_controllers::ucdm_cmd::Response& res) {
+bool UCDM::config(robotrainer_controllers::ucdm_cmd::Request & req,
+                  robotrainer_controllers::ucdm_cmd::Response & res) {
     if (req.mode == 0) {
         res.mode = this->currentMode;
         res.params = this->currentParams;
@@ -76,6 +76,7 @@ bool UCDM::set_mode(int mode) {
     DriveMode* new_dm = NULL;
 
     switch (mode) {
+        case 0: return false;
         case 1: new_dm = new OmnidirectionalMode(); break;
         case 11: new_dm = new OmniModeWithMaxAccel(); break;
         case 2: new_dm = new DifferentialMode(); break;
@@ -95,7 +96,7 @@ bool UCDM::set_mode(int mode) {
     this->currentMode = mode;
 
     ROS_INFO("In set_mode: %d", this->init_new_dm_state);
-    this->init_new_dm_state = 0;
+    this->init_new_dm_state = -1;
 
     if (this->dm) delete this->dm;
     this->dm = new_dm;

@@ -53,6 +53,16 @@
 // TODO(GLOBAL):  use smart pointers
 
 namespace robotrainer_controllers {
+    
+enum class drive_mode_type : std::uint8_t
+{
+    NONE = 0,
+    OMNIDIRECTIONAL = 1, 
+    DIFFERENTIAL = 2,
+    DIFFERENTIAL_MATRICES = 21,
+    ACKERMANN = 4,
+    ACKERMANN_SMOOTHER = 41,
+};
 
 // template<typename T>
 // std::array<T> std::array<T>::operator+ (T value) {
@@ -491,6 +501,9 @@ protected:
 protected:
     bool debug_;
     UndercarriageDriveMode * ucdm_;
+    
+    ucdm_cmd::Request drive_mode_request_;
+    ucdm_cmd::Response drive_mode_response_;
 
     void protectedToggleControllerRunning(const bool value, const std::string locking_number);
 
@@ -510,6 +523,20 @@ private:
     bool can_be_running_;
     ros::Time last_controller_time_base_;
     bool platform_is_moving_ = false;
+
+    // Modalities control variables
+    
+    // Drive modes
+    drive_mode_type drive_mode_used_;
+    const std::map<drive_mode_type, std::string> drive_mode_type_names_ = 
+    {
+        {drive_mode_type::NONE, "none"}, 
+        {drive_mode_type::OMNIDIRECTIONAL, "omnidirectional"}, 
+        {drive_mode_type::DIFFERENTIAL, "differential"},
+        {drive_mode_type::DIFFERENTIAL_MATRICES, "differential_matrices"},
+        {drive_mode_type::ACKERMANN, "ackermann"},
+        {drive_mode_type::ACKERMANN_SMOOTHER, "ackermann_smoother"},
+    };
 
     // config variables
     int orient_wheels_;

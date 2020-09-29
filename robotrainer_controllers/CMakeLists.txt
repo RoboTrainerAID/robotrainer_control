@@ -35,22 +35,6 @@ else()
   set(Eigen_LIBRARIES ${EIGEN3_LIBRARIES})
 endif()
 
-add_service_files(
-  FILES
-  GetRearWheelsState.srv
-  SetRearWheelsState.srv
-)
-
-generate_messages()
-
-
-generate_dynamic_reconfigure_options(
-  cfg/FTSBaseController.cfg
-  cfg/FTSAdaptiveForceController.cfg
-  cfg/IntegralCompareCtrl.cfg
-  cfg/PassiveBehaviorController.cfg
-)
-
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++11" Cpp11CompilerFlag)
 if (Cpp11CompilerFlag)
@@ -65,8 +49,22 @@ add_message_files(
   ICR.msg 
   A_and_b.msg
 )
-add_service_files(FILES ucdm_cmd.srv)
+
+add_service_files(
+  FILES
+  GetRearWheelsState.srv
+  SetRearWheelsState.srv
+  ucdm_cmd.srv
+)
+
 generate_messages()
+
+generate_dynamic_reconfigure_options(
+  cfg/FTSBaseController.cfg
+  cfg/FTSAdaptiveForceController.cfg
+  cfg/IntegralCompareCtrl.cfg
+  cfg/PassiveBehaviorController.cfg
+)
 
 ###################################
 ## catkin specific configuration ##

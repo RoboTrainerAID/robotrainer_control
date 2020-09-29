@@ -66,8 +66,9 @@ private:
     const std::vector<std::string> user_ft_names_ = {"standard", "user"};
     base_force_type used_ft_type_ = standard_ft;
     
-    enum velocity_based_adaption_type{ vel_based_adaption_none, vel_based_StoglZumkeller2020, vel_based_tanh, vel_based_damping };
-    const std::vector<std::string> velocity_based_adaption_names_ = {"none", "StoglZumkeller2020", "tanh", "damping"};
+    enum velocity_based_adaption_type{ vel_based_adaption_none, vel_based_StoglZumkeller2020, vel_based_tanh, vel_based_damping,
+      linear_force, non_linear_damping };
+    const std::vector<std::string> velocity_based_adaption_names_ = {"none", "StoglZumkeller2020", "tanh", "damping", "Linear Force", "Non-Linear Damping" };
     velocity_based_adaption_type used_vel_based_force_adaption_ = vel_based_adaption_none;
     
     struct tanh_adaption_params {

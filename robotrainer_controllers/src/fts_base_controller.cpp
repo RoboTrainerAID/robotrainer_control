@@ -159,7 +159,8 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     modalities_configured_ = false;
     
 //     createModalityInstances();
-
+    
+    drive_mode_used_ = drive_mode_type::NONE;
     ucdm_ = new UndercarriageDriveMode(root_nh);
 
     apply_areal_counterforce_ = false;
@@ -292,7 +293,9 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
             new_vel = applyModalities(new_vel, force_input_);
         }
         
-        ucdm_->apply(new_vel[0], new_vel[1], new_vel[2]);
+        if (drive_mode_used_ != drive_mode_type::NONE) {
+            ucdm_->apply(new_vel[0], new_vel[1], new_vel[2]);
+        }
         
         if (debug_) {
             if (pub_final_velocity_->trylock()) {
@@ -560,7 +563,9 @@ void FTSBaseController::diagnostics(diagnostic_updater::DiagnosticStatusWrapper 
     status.add("use twist input", use_twist_input_);
     status.add("no hardware output", no_hw_output_);
     status.add("modalities used", modality_type_names_[modalities_used_]);
+    status.add("counter force", enableCounterForce_);
     status.add("adapt center of rotation", adapt_center_of_rotation_);
+    status.add("drive modes", drive_mode_type_names_.at(drive_mode_used_));
     status.add("orient wheels", orient_wheels_);
     status.add("controller frame id", controllerFrameId_);
 }
@@ -1139,6 +1144,29 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
             cor_y_ = config.cor_y;
             ROS_DEBUG("[ADAPT_CoR: ON] - CoR: (x:%.2f, y:%.2f)", cor_x_, cor_y_);
         }
+        
+        drive_mode_used_ = static_cast<drive_mode_type>(config.drive_mode_type);
+        if (drive_mode_used_ != drive_mode_type::NONE) {
+            drive_mode_request_.mode = config.drive_mode_type;
+            drive_mode_request_.params.velocity_point_x = config.vel_point_x;
+            drive_mode_request_.params.velocity_point_y = config.vel_point_y;
+            drive_mode_request_.params.icr.x = config.icr_x;
+            drive_mode_request_.params.icr.y = config.icr_y;
+            drive_mode_request_.params.virtual_axle.x = config.virtual_axle_x;
+            drive_mode_request_.params.virtual_axle.y = config.virtual_axle_y;
+            drive_mode_request_.params.virtual_axle.a = config.virtual_axle_a;
+            drive_mode_request_.params.r_min = config.ackermann_min_rad;
+//             drive_mode_request_.params.p
+//             drive_mode_request_.params.castor.alpha
+//             drive_mode_request_.params.castor.beta
+//             drive_mode_request_.params.castor.d
+//             drive_mode_request_.params.castor.l
+//             drive_mode_request_.params.castor.r
+//             drive_mode_request_.params.a_and_b.a11 .. a33, b1 .. b3
+            ucdm_->config(drive_mode_request_, drive_mode_response_);
+        }
+        setOrientWheels({1, 0, 0});
+        
         config.apply_control_actions = false;
     }
 
@@ -1233,11 +1261,6 @@ std::array<double, 3> FTSBaseController::getFTSInput(const ros::Time & time)
     // no user grip detected in one frame, could be coincidence so count upwards
 
     if ( noInput || standingRobotNoInput || noUserInput ) {
-
-//                 if (!noInput) ROS_DEBUG("Robot detected as standing and not gripped: Delta_v: [%.6f], Input: [%.6f, %.6f, %.6f]", delta_vel_, raw_fts_input[0], raw_fts_input[1], raw_fts_input[2]);
-
-//                 if (noUserInput) ROS_DEBUG("Robot detected as not gripped: Delta_v: [%.6f], Input: [%.6f, %.6f, %.6f]", raw_fts_input[0], raw_fts_input[1], raw_fts_input[2]);
-
         if (userIsGripping()) {
             noGripTicks_++;
             if (noGripTicks_ > 3) {
