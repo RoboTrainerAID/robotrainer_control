@@ -18,6 +18,43 @@
 
 namespace robotrainer_controllers {
 
+enum class velocity_based_adaption_type : std::uint8_t
+{
+    NONE = 0,
+
+    /**
+     * Yu2003
+     */
+    DAMPING_LINEAR = 10,
+    /**
+     * Test Stogl2020
+     */
+    DAMPING_NONLINEAR = 11,
+
+    /**
+     * Test Stogl2020
+     */
+    FORCE_LINEAR = 20,
+    /**
+     * StoglZumkeller2020 (IFAC2020 paper)
+     */
+    FORCE_NONLINEAR = 21,
+    /**
+     * Test Stogl2020
+     */
+    FORCE_TANH = 22,
+};
+
+const std::map<velocity_based_adaption_type, std::string> velocity_based_adaption_type_names_ =
+{
+    {velocity_based_adaption_type::NONE, "none"},
+    {velocity_based_adaption_type::DAMPING_LINEAR, "DAMPING: Yu2003"},
+    {velocity_based_adaption_type::DAMPING_NONLINEAR, "DAMPING: NonLinear"},
+    {velocity_based_adaption_type::FORCE_LINEAR, "FORCE: Linear"},
+    {velocity_based_adaption_type::FORCE_NONLINEAR, "FORCE: StoglZumkeller2020"},
+    {velocity_based_adaption_type::FORCE_TANH, "FORCE: Tanh"},
+};
+
 class FTSAdaptiveForceController : public FTSController {
 
 public:
@@ -29,7 +66,6 @@ public:
 
     virtual void update(const ros::Time& time, const ros::Duration& period);
     void reconfigureCallback(robotrainer_controllers::FTSAdaptiveForceControllerConfig &config, uint32_t level);
-
 
 protected:
     // Getters and setters to protect concurency of multiple threads
@@ -66,20 +102,21 @@ private:
     const std::vector<std::string> user_ft_names_ = {"standard", "user"};
     base_force_type used_ft_type_ = standard_ft;
     
-    enum velocity_based_adaption_type{ vel_based_adaption_none, vel_based_StoglZumkeller2020, vel_based_tanh, vel_based_damping,
-      linear_force, non_linear_damping };
-    const std::vector<std::string> velocity_based_adaption_names_ = {"none", "StoglZumkeller2020", "tanh", "damping", "Linear Force", "Non-Linear Damping" };
-    velocity_based_adaption_type used_vel_based_force_adaption_ = vel_based_adaption_none;
+    velocity_based_adaption_type used_vel_based_adaption_ = velocity_based_adaption_type::NONE;
     
+    struct damping_adaption_params {
+        std::array<double, 3> min;
+        std::array<double, 3> max;
+    } damping_adaption_params_;
+
     struct tanh_adaption_params {
         std::array<double, 3> scale;
     } tanh_adaption_params_;
-    
-    struct damping_adaption_params {
-        std::array<double, 3> min; 
-        std::array<double, 3> max; 
-    } damping_adaption_params_;
 
+    struct force_adaption_params {
+        std::array<double, 3> min;
+        std::array<double, 3> max;
+    } force_adaption_params_;
 
     //to store average forces
     int averageForcesCount_;
@@ -186,7 +223,6 @@ private:
 
     bool non_standard_max_forces_;
     std::array<double, 3> base_max_ft_;
-    bool use_smooth_transition_; //for interpolation cutoff at lower than 100% velocity
     double transition_rate_;
     std::array<double, 3> force_scale_minvel_;
     std::array<double, 3> force_scale_maxvel_;
@@ -209,14 +245,17 @@ private:
 
     void returnRobotAutonomouslyToStartPosition(bool finished_successfully);
 
-    void adaptForceScaleBasedOnVelocity();
+    void adaptControllerBasedOnVelocity();
+    void setMaxFtScale(std::array<double,3> & scale);
     void setBaseValues();
     void resetToBaseValues();
 
     void legTrackCallback(const leg_tracker::PersonMsg::ConstPtr& msg);
 
-    std::array<double, 3> velocityBasedForceScaling_StoglZumkeller2020(
-        std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor);
+    std::array<double, 3> scaleBetweenValues(std::array<double, 3> & value_reference_min,
+                                             std::array<double, 3> & value_reference_max,
+                                             std::array<double, 3> & scaling_reference,
+                                             bool use_non_linear_transition);
 
     void forceInputToLed(const geometry_msgs::WrenchStamped force_input);
     void sendLEDForceTopics();

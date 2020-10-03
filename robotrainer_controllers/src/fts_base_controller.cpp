@@ -67,6 +67,9 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     base_reconfigured_flag_ = false;
 
     /* Debug messages */
+    pub_platform_hw_velocity_.reset(
+      new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
+        ctrl_nh_, "debug/platform_hw_velocity", 1));
     pub_admittance_velocity_.reset(
         new realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>(
         ctrl_nh_, "debug/admittance_velocity", 1));
@@ -175,7 +178,8 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
 /**
  * \brief start controller
  */
-void FTSBaseController::starting(const ros::Time& time) {
+void FTSBaseController::starting(const ros::Time& time)
+{
     WheelControllerBase::starting(time);
     controller_started_ = true;
 
@@ -184,9 +188,29 @@ void FTSBaseController::starting(const ros::Time& time) {
     protectedToggleControllerRunning(false, lock);
     bool ret = unsafeRecalculateFTSOffsets();
     setOrientWheels(std::array<double, 3>({1, 0, 0}));
-    last_controller_time_base_ = time;
     protectedToggleControllerRunning(ret, lock);
     setLEDPhase(controller_led_phases::UNLOCKED);
+}
+
+/**
+ * \brief Update robot's internal state before executing controller
+ */
+void FTSBaseController::updateRobotState()
+{
+
+//   if (internal_state_updated_) {
+//     return;
+//   }
+
+  updateState();  // fts_GeomController call
+  geom_->calcDirect(platform_state_);
+  platform_linear_vel_ = std::pow(platform_state_.getVelX(), 2) +
+                         std::pow(platform_state_.getVelY(), 2);
+  platfrom_velocity_ = platform_linear_vel_ + std::pow(platform_state_.dRotRobRadS, 2);
+
+  platform_is_moving_ = ( platfrom_velocity_ > 0.001 );
+
+  internal_state_updated_ = true;
 }
 
 /**
@@ -205,13 +229,8 @@ void FTSBaseController::starting(const ros::Time& time) {
 void FTSBaseController::update(const ros::Time& time, const ros::Duration& period) {
 
     // First read states from the hardware
-    // TODO: This should be done before all controllers and also reading of force data should be done in the above controllers --> There should be our PlatformState to get all relevant params of the current state
+    updateRobotState();
     updateState();
-    geom_->calcDirect(platform_state_);
-    double platform_vel = std::pow(platform_state_.getVelX(), 2) + std::pow(platform_state_.getVelY(), 2) + std::pow(platform_state_.dRotRobRadS, 2);
-    platform_is_moving_ = ( platform_vel > 0.001 );
-//     ROS_WARN_THROTTLE(1, "Base Controller time period between updates is: %f", (time-last_controller_time_base_).toSec());
-    last_controller_time_base_ = time;
 
     std::array<double, 3> new_vel;
     bool set_new_commands = true;
@@ -225,6 +244,14 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         
         if (debug_) {
             convertToWrenchAndPublish(time, force_input_, pub_force_input_scaled_limited_);
+            if (pub_admittance_velocity_->trylock()) {
+              pub_admittance_velocity_->msg_.header.stamp = time;
+              pub_admittance_velocity_->msg_.header.frame_id = controllerFrameId_;
+              pub_admittance_velocity_->msg_.twist.linear.x = new_vel[0];
+              pub_admittance_velocity_->msg_.twist.linear.y = new_vel[1];
+              pub_admittance_velocity_->msg_.twist.angular.z = new_vel[2];
+              pub_admittance_velocity_->unlockAndPublish();
+            }
         }
 
 //                 TODO: This should go into a modality
@@ -234,7 +261,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
             force_input_ = applyAreaCounterforce(force_input_);
             apply_areal_counterforce_ = false;
         }
-        
+
         if (debug_) {
             convertToWrenchAndPublish(time, force_input_, pub_resulting_force_after_counterforce_);
         }
@@ -262,7 +289,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
                 }
             }
         }
-        
+
         if (debug_) {
             if (pub_admittance_velocity_->trylock()) {
                 pub_admittance_velocity_->msg_.header.stamp = time;
@@ -369,6 +396,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         steer_joints_[i].setCommand(wheel_commands_[i].dVelGearSteerRadS);
         drive_joints_[i].setCommand(wheel_commands_[i].dVelGearDriveRadS);
     }
+    internal_state_updated_ = false;
     diagnostic_.update();
 }
 
@@ -1341,11 +1369,11 @@ std::array<double, 3> FTSBaseController:: getOldForcePercent() {
  * \brief Returns the velocity which was used for the last update loop calculation
  */
 std::array<double, 3> FTSBaseController::getOldVelocity() {
-        std::array<double, 3> velocity_old;
-        for(int i = 0; i < 3; ++i){
-                velocity_old[i] = velocity_old_[i] * max_vel_[i];
-        }
-        return velocity_old;
+  std::array<double, 3> velocity_old;
+  for(int i = 0; i < 3; ++i){
+    velocity_old[i] = velocity_old_[i] * max_vel_[i];
+  }
+  return velocity_old;
 }
 
 /**
@@ -1353,6 +1381,10 @@ std::array<double, 3> FTSBaseController::getOldVelocity() {
  */
 std::array<double, 3> FTSBaseController::getOldVelocityPercent() {
         return velocity_old_;
+}
+
+std::array<double, 3> FTSBaseController::getVelocity() {
+  return {platform_state_.getVelX(), platform_state_.getVelY(), platform_state_.dRotRobRadS};
 }
 
 /**

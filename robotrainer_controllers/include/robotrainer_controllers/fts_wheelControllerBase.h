@@ -47,7 +47,7 @@ public:
         twist_subscriber_ = controller_nh.subscribe("/base/twist_controller/command", 1, &WheelControllerBase::topicCallbackTwistCmd, this);
 
         wheel_commands_.resize(this->wheel_states_.size());
-        commands_pub_.reset(new realtime_tools::RealtimePublisher<cob_base_controller_utils::WheelCommands>(controller_nh, "wheel_commands", 5));
+        commands_pub_.reset(new realtime_tools::RealtimePublisher<cob_base_controller_utils::WheelCommands>(controller_nh, "wheel_commands", 1));
 
         commands_pub_->msg_.drive_target_velocity.resize(this->wheel_states_.size());
         commands_pub_->msg_.steer_target_velocity.resize(this->wheel_states_.size());

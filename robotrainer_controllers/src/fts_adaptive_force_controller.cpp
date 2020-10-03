@@ -23,12 +23,12 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
     ros::NodeHandle fts_a_ctrl_nh(controller_nh, "FTSAdaptiveForceController");
     fts_a_ctrl_nh.param<bool>("adaptive_force/use_passive_behavior_ctrlr", use_passive_behavior_ctrlr_, false);
     // Adaptive force parameters
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/x", force_scale_minvel_[0], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/y", force_scale_minvel_[1], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/rot", force_scale_minvel_[2], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/x", force_scale_maxvel_[0], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/y", force_scale_maxvel_[1], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/rot", force_scale_maxvel_[2], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/x", force_adaption_params_.min[0], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/y", force_adaption_params_.min[1], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/rot", force_adaption_params_.min[2], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/x", force_adaption_params_.max[0], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/y", force_adaption_params_.max[1], 1.0);
+    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/rot", force_adaption_params_.max[2], 1.0);
     // damping adaption (yu2003)
     fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/x",
                                 damping_adaption_params_.min[0], 1.0);
@@ -43,7 +43,6 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
     fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/rot",
                                 damping_adaption_params_.max[2], 1.0);
     // smooth transition
-    fts_a_ctrl_nh.param<bool>("transition/use_smooth_transition", use_smooth_transition_, false);
     fts_a_ctrl_nh.param<double>("transition/transition_rate", transition_rate_, 1.0);
     // param MaxForce test
     fts_a_ctrl_nh.param<int>("parametrization/x_base/springConst", springConstant_x_, 200);
@@ -72,7 +71,7 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
     baseForce_allParamsStored_ = false;
     
     used_ft_type_ = standard_ft;
-    used_vel_based_force_adaption_ = vel_based_adaption_none;
+    used_vel_based_adaption_ = velocity_based_adaption_type::NONE;
     pre_adaption_base_params_.gain = getGain();
     pre_adaption_base_params_.time_const = getTimeConst();
     pre_adaption_base_params_.damping = getDamping();
@@ -95,7 +94,7 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
     //force-torque
     pub_force_adapt_limited_input_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adapted_limited_input_force", 1);
 
-    pub_adaptive_scale_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/scale", 1);
+    pub_adaptive_scale_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/scaled_value", 1);
     pub_adaptive_max_ft_ = new realtime_tools::RealtimePublisher<geometry_msgs::Vector3>(controller_nh, "adaption/maxFT", 1);
 
     /* Set dynamic reconfigure */
@@ -208,7 +207,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
                 case adaptX:
                     ROS_WARN_ONCE("[PARAM ADAPTIVE X] - STARTED");
                     parametrizeAdaptForceX();
-                    adaptForceScaleBasedOnVelocity();
+                    adaptControllerBasedOnVelocity();
                     break;
                 case finished:
                     ROS_WARN("[PARAM FINISHED!] - Parametrization has finished, setting robot to active!");
@@ -225,8 +224,8 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
     } else { // robot in normal use
         setActiveDimensions( all_active_);
 
-        if (used_vel_based_force_adaption_ != vel_based_adaption_none) {
-            adaptForceScaleBasedOnVelocity();
+        if (used_vel_based_adaption_ != velocity_based_adaption_type::NONE) {
+            adaptControllerBasedOnVelocity();
         }
     }
 
@@ -254,7 +253,8 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
 void FTSAdaptiveForceController::diagnostics(
     diagnostic_updater::DiagnosticStatusWrapper & status)
 {
-    if (used_vel_based_force_adaption_ || used_ft_type_ || parametrization_active_) {
+    if (used_vel_based_adaption_ != velocity_based_adaption_type::NONE ||
+        used_ft_type_ || parametrization_active_) {
         status.summary(0, "Cotroller is adapting parameters");
     } else {
         status.summary(1, "Controller is just calling Base");
@@ -279,16 +279,16 @@ void FTSAdaptiveForceController::diagnostics(
     status.add("User Base Force V max", str);
     
     status.add("Use Force Based Vel adaption", 
-                velocity_based_adaption_names_[used_vel_based_force_adaption_]);
+               velocity_based_adaption_type_names_.at(used_vel_based_adaption_));
     str = "";
-    str += std::string(" x: ") + std::to_string(force_scale_minvel_[0]);
-    str += std::string(" y: ") + std::to_string(force_scale_minvel_[1]);
-    str += std::string(" rot-z: ") + std::to_string(force_scale_minvel_[2]);
+    str += std::string(" x: ") + std::to_string(force_adaption_params_.min[0]);
+    str += std::string(" y: ") + std::to_string(force_adaption_params_.min[1]);
+    str += std::string(" rot-z: ") + std::to_string(force_adaption_params_.min[2]);
     status.add("Velocity-Based Force min scale", str);
     str = "";
-    str += std::string(" x: ") + std::to_string(force_scale_maxvel_[0]);
-    str += std::string(" y: ") + std::to_string(force_scale_maxvel_[1]);
-    str += std::string(" rot-z: ") + std::to_string(force_scale_maxvel_[2]);
+    str += std::string(" x: ") + std::to_string(force_adaption_params_.max[0]);
+    str += std::string(" y: ") + std::to_string(force_adaption_params_.max[1]);
+    str += std::string(" rot-z: ") + std::to_string(force_adaption_params_.max[2]);
     status.add("Velocity-Based Force max scale", str);
     
 }
@@ -373,15 +373,14 @@ void FTSAdaptiveForceController::initParametrizationStep() {
             adaptX_movementSpeedList_.push_back(getOldVelocityPercent()[0]);
             adaptX_unchangedCtr_ = 0;
             adaptX_testIntervallDuration_ = 1.0;
-            used_vel_based_force_adaption_ = vel_based_StoglZumkeller2020;
-            use_smooth_transition_ = true;
+            used_vel_based_adaption_ = velocity_based_adaption_type::FORCE_NONLINEAR;
             setLegTrackUpdated(false);
-            force_scale_minvel_[0] = 1.5;
-            force_scale_minvel_[1] = 1.5;
-            force_scale_minvel_[2] = 1.0;
-            force_scale_maxvel_[0] = 0.35;
-            force_scale_maxvel_[1] = 0.35;
-            force_scale_maxvel_[2] = 0.35;
+            force_adaption_params_.min[0] = 1.5;
+            force_adaption_params_.min[1] = 1.5;
+            force_adaption_params_.min[2] = 1.0;
+            force_adaption_params_.max[0] = 0.35;
+            force_adaption_params_.max[1] = 0.35;
+            force_adaption_params_.max[2] = 0.35;
             footDistance_lastTravelledDist_ = 0.0;
             if (debug_) {
                 sendDebugTopicsParamAdaptX(1.0, 0.0);
@@ -758,7 +757,8 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
     double avgSpeed = std::fmin( std::accumulate(adaptX_movementSpeedList_.begin(), adaptX_movementSpeedList_.end(), 0.0) / adaptX_movementSpeedList_.size(), 1.0);
     double robotDistDiff = robotIsMovingForward() ? (newAvgDist - fwd_medianFootDistance_) : (newAvgDist - bwd_medianFootDistance_);
     double percentualOfMaxDiff = (std::fabs(robotDistDiff) < minLegDistance_) ? 0.0 : std::fmin( std::fabs(robotDistDiff) / maxLegDistance_, 1.0);
-    double avgScale = force_scale_minvel_[0] + ( force_scale_maxvel_[0] - force_scale_minvel_[0] ) * avgSpeed;
+    double avgScale = force_adaption_params_.min[0] +
+                      (force_adaption_params_.max[0] - force_adaption_params_.min[0]) * avgSpeed;
 
     ROS_INFO("[PARAM AdaptX] [DEBUG] RobotDistDiff: %.2f, percentualOfMaxDiff: %.2f, avgSpeedFactor: %.2f, avgScale: %.2f (timeInPhase: %.2f)",
             robotDistDiff, percentualOfMaxDiff, avgSpeed, avgScale, (current_loop_time_ - adaptX_startTime_).toSec());
@@ -768,9 +768,9 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
         ROS_INFO("[PARAM AdaptX - NO CHANGE] Difference in last measurement less than minimal leg distance, thus not changing parameters now. (%d steps total)", adaptX_unchangedCtr_);
         if (adaptX_unchangedCtr_ >= 5) {
             //declare phase finished
-            ROS_INFO("[PARAM AdaptX] Last five measurements were in range, which concludes parametrization of adaptive features\n Enabling velocity-adaption using force_scale_minvel: %.2f and force_scale_maxvel: %.2f as parameters now.", force_scale_minvel_[0], force_scale_maxvel_[0]);
-            force_scale_maxvel_[1] = force_scale_maxvel_[0];
-            force_scale_minvel_[1] = force_scale_minvel_[0];
+          ROS_INFO("[PARAM AdaptX] Last five measurements were in range, which concludes parametrization of adaptive features\n Enabling velocity-adaption using force_scale_minvel: %.2f and force_scale_maxvel: %.2f as parameters now.", force_adaption_params_.min[0], force_adaption_params_.max[0]);
+          force_adaption_params_.max[1] = force_adaption_params_.max[0];
+          force_adaption_params_.min[1] = force_adaption_params_.min[0];
             setLEDPhase(controller_led_phases::PHASE_FINISHED);
         }
     } else { //adaption needed
@@ -779,27 +779,27 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
 
         if (robotDistDiff > minLegDistance_) { // distance too high = person too far away from robot -> robot reacts too fast -> decrease scales
             //TODO determine based on velocity, how much you need to adapt both parameters
-            if (avgScale < 1.0) { //robot needed less than normal force for max velocity -> increase force_scale_maxvel_[0] to make it more force needed
-                force_scale_maxvel_[0] += quadraticPercentualChange * (1.0 - force_scale_maxvel_[0]);
-                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Higher than baseline -> ROBOT TOO FAST -> avgScale < 1.0 -> adapting force_scale_maxvel_ to %.2f", robotDistDiff, force_scale_maxvel_[0]);
-            } else {  //robot needed more than normal force, but was too fast -> increase force_scale_minvel_[0]
-                force_scale_minvel_[0] += quadraticPercentualChange * (2.0 - force_scale_minvel_[0]);
-                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Higher than baseline -> ROBOT TOO FAST -> avgScale < 1.0 -> adapting force_scale_minvel_ to %.2f", robotDistDiff, force_scale_minvel_[0]);
+            if (avgScale < 1.0) { //robot needed less than normal force for max velocity -> increase force_adaption_params_.max[0] to make it more force needed
+                force_adaption_params_.max[0] += quadraticPercentualChange * (1.0 - force_adaption_params_.max[0]);
+                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Higher than baseline -> ROBOT TOO FAST -> avgScale < 1.0 -> adapting force_adaption_params_.max to %.2f", robotDistDiff, force_adaption_params_.max[0]);
+            } else {  //robot needed more than normal force, but was too fast -> increase force_adaption_params_.min[0]
+                force_adaption_params_.min[0] += quadraticPercentualChange * (2.0 - force_adaption_params_.min[0]);
+                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Higher than baseline -> ROBOT TOO FAST -> avgScale < 1.0 -> adapting force_adaption_params_.min to %.2f", robotDistDiff, force_adaption_params_.min[0]);
             }
         } else if (robotDistDiff < -1.0 * minLegDistance_) { // distance too low == person too close to robot -> robot reacts too slow -> increase scales
-            if (avgScale < 1.0) { // robot was too slow, but needed less than normal force for maxvel -> decrease force_scale_maxvel_[0] to make it even less force needed
-                force_scale_maxvel_[0] -= quadraticPercentualChange * (force_scale_maxvel_[0] - 0.35);
-                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Lower than baseline -> ROBOT TOO SLOW -> avgScale < 1.0 -> adapting force_scale_maxvel_ to %.2f", robotDistDiff, force_scale_maxvel_[0]);
-            } else { // robot was too slow, but needed more than normal force for maxvel -> decrease force_scale_minvel_[0] to make robot faster
-                force_scale_minvel_[0] -= quadraticPercentualChange * (force_scale_minvel_[0] - 1.0);
-                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Lower than baseline -> ROBOT TOO SLOW -> avgScale > 1.0 -> adapting force_scale_minvel_ to %.2f", robotDistDiff, force_scale_minvel_[0]);
+            if (avgScale < 1.0) { // robot was too slow, but needed less than normal force for maxvel -> decrease force_adaption_params_.max[0] to make it even less force needed
+                force_adaption_params_.max[0] -= quadraticPercentualChange * (force_adaption_params_.max[0] - 0.35);
+                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Lower than baseline -> ROBOT TOO SLOW -> avgScale < 1.0 -> adapting force_adaption_params_.max to %.2f", robotDistDiff, force_adaption_params_.max[0]);
+            } else { // robot was too slow, but needed more than normal force for maxvel -> decrease force_adaption_params_.min[0] to make robot faster
+                force_adaption_params_.min[0] -= quadraticPercentualChange * (force_adaption_params_.min[0] - 1.0);
+                ROS_INFO("[PARAM AdaptX - CHANGE] Distance %.2f Lower than baseline -> ROBOT TOO SLOW -> avgScale > 1.0 -> adapting force_adaption_params_.min to %.2f", robotDistDiff, force_adaption_params_.min[0]);
             }
         }//distanceTooLow
         setLEDPhase(controller_led_phases::SHOW_ADAPTED);
     }//adaption needed
     adaptX_lastTestTime_ = current_loop_time_;
         //sendDebugTopicsParamAdaptX(avgScale, robotDistDiff); // ACTIVATE FOR DEBUG ONLY
-//     adaptForceScaleBasedOnVelocity();
+//     adaptControllerBasedOnVelocity();
 }
 
 /**
@@ -809,60 +809,102 @@ void FTSAdaptiveForceController::parametrizeAdaptForceX() {
  * The goal is to have more static behavior when accelerating while allowing for easier keeping high velocities.
  *
  */
-void FTSAdaptiveForceController::adaptForceScaleBasedOnVelocity() {
+void FTSAdaptiveForceController::adaptControllerBasedOnVelocity() {
 
-    std::array<double, 3> scale;
-    std::array<double, 3> adaptive_max_ft;
-    std::array<double, 3> vel_factor = getOldVelocityPercent();
-    
-    switch (used_vel_based_force_adaption_) {
-        case vel_based_adaption_none:
-            return;
-        case vel_based_damping:
-            std::array<double, 3> damping;
-            for (int i=0; i<3; i++) {
-                damping[i] = damping_adaption_params_.max[i] - (damping_adaption_params_.max[i] - 
-                             damping_adaption_params_.min[i]) * getOldVelocityPercent()[i];
-            }
-            discretizeWithNewMassDamping(pre_adaption_base_params_.mass, damping);
-            break;
-        case vel_based_StoglZumkeller2020:
-//             curr_scale = velocityBasedForceScaling_StoglZumkeller2020(force_scale_minvel_, force_scale_maxvel_);
-//             break;
-            for (int  i = 0; i < 3; i++) {
-                vel_factor[i] = fmin( fabs(vel_factor[i]), 1.0); //velocity percent is now definitely between 0.0 and 1.0
-                if (use_smooth_transition_) {
-                    double steepness = -9.0;
-                    double v_end = std::pow(transition_rate_ + 1.0, steepness);
-                    vel_factor[i] = ( 1.0 - std::pow(vel_factor[i] * transition_rate_ + 1.0, steepness) ) / (1.0 - v_end);
-                }
-            }
-            break;
-        case vel_based_tanh:
-            for (int  i = 0; i < 3; i++) {
-                vel_factor[i] = std::tanh(vel_factor[i] * tanh_adaption_params_.scale[i] * 3.14159);
-            }
-            break;
-        case linear_force:
+    std::array<double, 3> scaled_value;
+    std::array<double, 3> velocity_percent = getOldVelocityPercent();
 
-            break;
-        case non_linear_damping:
-            break;
+    switch (used_vel_based_adaption_) {
+      case velocity_based_adaption_type::NONE:
+        break;
+      case velocity_based_adaption_type::DAMPING_LINEAR:
+        scaled_value = scaleBetweenValues(damping_adaption_params_.max,
+                                          damping_adaption_params_.min,
+                                          velocity_percent,
+                                          false);
+//           for (int i=0; i<3; i++) {
+//               damping[i] = damping_adaption_params_.max[i] - (damping_adaption_params_.max[i] -
+//               [i]) * velocity_percent[i];
+//           }
+        discretizeWithNewMassDamping(pre_adaption_base_params_.mass, scaled_value);
+        break;
+      case velocity_based_adaption_type::DAMPING_NONLINEAR:
+        scaled_value = scaleBetweenValues(damping_adaption_params_.max,
+                                          damping_adaption_params_.min,
+                                          velocity_percent,
+                                          true);
+        discretizeWithNewMassDamping(pre_adaption_base_params_.mass, scaled_value);
+        break;
+      case velocity_based_adaption_type::FORCE_LINEAR:
+        scaled_value = scaleBetweenValues(force_adaption_params_.min,
+                                          force_adaption_params_.max,
+                                          velocity_percent,
+                                          false);
+        setMaxFtScale(scaled_value);
+        break;
+      case velocity_based_adaption_type::FORCE_NONLINEAR:
+        scaled_value = scaleBetweenValues(force_adaption_params_.min,
+                                          force_adaption_params_.max,
+                                          velocity_percent,
+                                          true);
+        setMaxFtScale(scaled_value);
+        break;
+      case velocity_based_adaption_type::FORCE_TANH:
+          for (int  i = 0; i < 3; i++) {
+              velocity_percent[i] = std::tanh(velocity_percent[i] * tanh_adaption_params_.scale[i] * 3.14159);
+          }
+          scaled_value = scaleBetweenValues(force_adaption_params_.min,
+                                            force_adaption_params_.max,
+                                            velocity_percent,
+                                            false);
+          setMaxFtScale(scaled_value);
+          break;
     }
-    
-    for (int i = 0; i < 3; i++) {
-        scale[i] = force_scale_minvel_[i] + ( force_scale_maxvel_[i] - force_scale_minvel_[i] ) * fmin( 1.0, vel_factor[i] );
-        adaptive_max_ft[i] = scale[i] * base_max_ft_[i];
+}
+
+void FTSAdaptiveForceController::setMaxFtScale(std::array<double,3> & scale) {
+  std::array<double, 3> adaptive_max_ft;
+  for (int i = 0; i < 3; i++) {
+    adaptive_max_ft[i] = scale[i] * base_max_ft_[i];
+  }
+  setMaxFt(adaptive_max_ft);
+
+  if (pub_adaptive_max_ft_->trylock()) {
+    pub_adaptive_max_ft_->msg_ = convertToMessage(adaptive_max_ft);
+    pub_adaptive_max_ft_->unlockAndPublish();
+  }
+}
+
+/**
+ * \brief Returns the current scaling factor based on current velocity and the input values for min
+ * and max scale factors. This function returns for each dimension of the robot the current adaptive
+ * scale factor between the input 'minScaleFactor' and 'maxScaleFactor' based on the current
+ * percentual velocity of the robot. The scale is calculated on a different function which puts a
+ * higher change-rate towards the lower-end of the velocity (where the robot is normally pushed
+ * more often)
+ */
+std::array<double, 3> FTSAdaptiveForceController::scaleBetweenValues(std::array<double, 3> & value_reference_min, std::array<double, 3> & value_reference_max, std::array<double, 3> & scaling_reference, bool use_non_linear_transition) {
+
+  std::array<double, 3> value;
+
+  for (int  i = 0; i < 3; i++) {
+    scaling_reference[i] = fmin( fabs(scaling_reference[i]), 1.0); //velocity percent is now definitely between 0.0 and 1.0
+    if (use_non_linear_transition) {
+      double steepness = 9.0;
+      scaling_reference[i] = (1.0 - std::pow((scaling_reference[i] * transition_rate_ + 1.0), -steepness) ) /
+                             (1.0 - std::pow((transition_rate_ + 1.0), -steepness));
     }
-    setMaxFt(adaptive_max_ft);
+    value[i] = value_reference_min[i] +
+              (value_reference_max[i] - value_reference_min[i]) * scaling_reference[i];
+  }
+
+  if (debug_) {
     if (pub_adaptive_scale_->trylock()) {
-        pub_adaptive_scale_->msg_ = convertToMessage(scale);
-        pub_adaptive_scale_->unlockAndPublish();
+      pub_adaptive_scale_->msg_ = convertToMessage(value);
+      pub_adaptive_scale_->unlockAndPublish();
     }
-    if (pub_adaptive_max_ft_->trylock()) {
-        pub_adaptive_max_ft_->msg_ = convertToMessage(adaptive_max_ft);
-        pub_adaptive_max_ft_->unlockAndPublish();
-    }
+  }
+  return value;
 }
 
 
@@ -873,30 +915,6 @@ void FTSAdaptiveForceController::adaptForceScaleBasedOnVelocity() {
  */
 void FTSAdaptiveForceController::setBaseValues() {
     base_max_ft_ = getMaxFt();
-}
-
-
-/**
- * \brief Returns the current scaling factor based on current velocity and the input values for min and max scale factors
- * This function returns for each dimension of the robot the current adaptive scale factor between the input 'minScaleFactor' and 'maxScaleFactor' based on the current percentual velocity of the robot.
- * If the toggle 'use_smooth_transition_' is switched on, the scale is calculated on a different function which puts a higher change-rate towards the lower-end of the velocity (where the robot is normally pushed more often)
- *
- */
-std::array<double, 3> FTSAdaptiveForceController::velocityBasedForceScaling_StoglZumkeller2020( std::array<double, 3> minScaleFactor, std::array<double, 3> maxScaleFactor ) {
-
-    std::array<double, 3> vel_factor = getOldVelocityPercent();
-    std::array<double, 3> scale;
-
-    for (int  i = 0; i < 3; i++) {
-        vel_factor[i] = fmin( fabs(vel_factor[i]), 1.0); //velocity percent is now definitely between 0.0 and 1.0
-        if (use_smooth_transition_) {
-            double steepness = -9.0;
-            double v_end = std::pow(transition_rate_ + 1.0, steepness);
-            vel_factor[i] = ( 1.0 - std::pow(vel_factor[i] * transition_rate_ + 1.0, steepness) ) / (1.0 - v_end);
-        }
-        scale[i] = minScaleFactor[i] + ( maxScaleFactor[i] - minScaleFactor[i] ) * fmin( 1.0, vel_factor[i] );
-    }
-    return scale;
 }
 
 /**
@@ -1205,11 +1223,11 @@ void FTSAdaptiveForceController::sendDebugTopicsParamAdaptX( double currentScale
         pub_adaptive_scale_x_->unlockAndPublish();
     }
     if (pub_adaptive_factor_min_->trylock()){
-        pub_adaptive_factor_min_->msg_.data = force_scale_minvel_[0];
+        pub_adaptive_factor_min_->msg_.data = force_adaption_params_.min[0];
         pub_adaptive_factor_min_->unlockAndPublish();
     }
     if (pub_adaptive_factor_max_->trylock()){
-        pub_adaptive_factor_max_->msg_.data = force_scale_maxvel_[0];
+        pub_adaptive_factor_max_->msg_.data = force_adaption_params_.max[0];
         pub_adaptive_factor_max_->unlockAndPublish();
     }
     if (pub_adaptive_distDiff_->trylock()){
@@ -1236,7 +1254,7 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
 
     //switch between standard ft/velocity values and user-parametrized values
     used_ft_type_ = static_cast<base_force_type>(config.max_ft_values_used);
-    
+
     switch (used_ft_type_) {
         case standard_ft:
             useUserParametrizedValues(false);
@@ -1250,54 +1268,52 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
             }
             break;
     }
-    
-    if (used_vel_based_force_adaption_ != config.velocity_based_force_adaption_used)
+
+    if (used_vel_based_adaption_ !=
+        static_cast<velocity_based_adaption_type>(config.velocity_based_force_adaption_used))
     {
-        if (used_vel_based_force_adaption_ != vel_based_adaption_none) {
+      if (used_vel_based_adaption_ != velocity_based_adaption_type::NONE) {
             pre_adaption_base_params_.gain = getGain();
             pre_adaption_base_params_.time_const = getTimeConst();
             pre_adaption_base_params_.damping = getDamping();
             pre_adaption_base_params_.mass = getMass();
         }
-        if (used_vel_based_force_adaption_ == vel_based_damping) {
+        if (used_vel_based_adaption_ == velocity_based_adaption_type::DAMPING_LINEAR ||
+            used_vel_based_adaption_ == velocity_based_adaption_type::DAMPING_NONLINEAR
+        ) {
             discretizeWithNewParameters(pre_adaption_base_params_.time_const,
                                         pre_adaption_base_params_.gain);
         }
         // velocity based force adaption configuraion
-        used_vel_based_force_adaption_ = static_cast<velocity_based_adaption_type>(
+        used_vel_based_adaption_ = static_cast<velocity_based_adaption_type>(
             config.velocity_based_force_adaption_used);
     }
-    
+
     if (config.apply_vel_adaption_params) {
-
         ROS_INFO("[ADAPT]: Changing parameters according to dynamic reconfigure inputs");
-//         stopController();
 
-        // vel_based_StoglZumkeller2020
-        force_scale_minvel_[0] = config.force_scale_minvel_x;
-        force_scale_minvel_[1] = config.force_scale_minvel_y;
-        force_scale_minvel_[2] = config.force_scale_minvel_rot;
-        force_scale_maxvel_[0] = config.force_scale_maxvel_x;
-        force_scale_maxvel_[1] = config.force_scale_maxvel_y;
-        force_scale_maxvel_[2] = config.force_scale_maxvel_rot;
-        use_smooth_transition_ = config.use_smooth_transition;
+        // Force adaption
+        force_adaption_params_.min[0] = config.force_scale_minvel_x;
+        force_adaption_params_.min[1] = config.force_scale_minvel_y;
+        force_adaption_params_.min[2] = config.force_scale_minvel_rot;
+        force_adaption_params_.max[0] = config.force_scale_maxvel_x;
+        force_adaption_params_.max[1] = config.force_scale_maxvel_y;
+        force_adaption_params_.max[2] = config.force_scale_maxvel_rot;
         transition_rate_ = config.transition_rate;
-//         resetToBaseValues();
-//         resetController();
-        
+
         // tanh
         tanh_adaption_params_.scale[0] = config.tanh_scale_x;
         tanh_adaption_params_.scale[1] = config.tanh_scale_y;
         tanh_adaption_params_.scale[2] = config.tanh_scale_z;
-        
-        // damping
+
+        // Damping adaption
         damping_adaption_params_.min[0] = config.damping_min_x;
         damping_adaption_params_.min[1] = config.damping_min_y;
         damping_adaption_params_.min[2] = config.damping_min_z;
         damping_adaption_params_.max[0] = config.damping_max_x;
         damping_adaption_params_.max[1] = config.damping_max_y;
         damping_adaption_params_.max[2] = config.damping_max_z;
-        
+
         config.apply_vel_adaption_params = false;
     }
 

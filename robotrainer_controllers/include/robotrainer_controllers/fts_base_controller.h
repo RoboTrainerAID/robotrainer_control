@@ -324,18 +324,15 @@ protected:
     bool modalities_chain_configured_;
     //debug
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> 
-        pub_admittance_velocity_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> 
+        pub_platform_hw_velocity_,
+        pub_admittance_velocity_,
         pub_final_velocity_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> 
-        pub_force_input_raw_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> 
-        pub_force_input_scaled_limited_;
+
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
-        pub_resulting_force_after_counterforce_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
-        pub_resulting_force_after_cor_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>>
+        pub_force_input_raw_,
+        pub_force_input_scaled_limited_,
+        pub_resulting_force_after_counterforce_,
+        pub_resulting_force_after_cor_,
         pub_input_force_force_for_gui_;
 
     // LEDS
@@ -348,10 +345,10 @@ protected:
     bool sendLEDGoal_;
     double ledForceInput_;
     iirob_led::BlinkyGoal ledGoalToSend_;
-    
+
     //debug LED
     bool debug_led_on_;
-    
+
     // TODO: These here should be private... and moved to the global CA implementation
     //counter force modality
     std::array<double,3> staticCounterForce_ = {{0.0, 0.0, 0.0}};
@@ -465,6 +462,7 @@ protected:
     std::array<double, 3> getOldForcePercent();
     std::array<double, 3> getOldVelocity();
     std::array<double, 3> getOldVelocityPercent();
+    std::array<double, 3> getVelocity();
     std::array<double, 3> getTimeConst();
     std::array<double, 3> getGain();
     std::array<double, 3> getDamping();
@@ -499,13 +497,16 @@ protected:
 
 
 protected:
+    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
+
+    void updateRobotState();
+
     bool debug_;
     UndercarriageDriveMode * ucdm_;
-    
+
     ucdm_cmd::Request drive_mode_request_;
     ucdm_cmd::Response drive_mode_response_;
 
-    void protectedToggleControllerRunning(const bool value, const std::string locking_number);
 
 private:
     boost::mutex controller_internal_states_mutex_;
@@ -515,17 +516,21 @@ private:
 
     bool controller_started_;
 
-    diagnostic_updater::Updater diagnostic_;
-    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
+    // internal state variables
+    bool internal_state_updated_ = false;
+    double platfrom_velocity_ = 0;
+    double platform_linear_vel_ = 0;
+    bool platform_is_moving_ = false;
 
     // Update function variables
     bool running_;
     bool can_be_running_;
-    ros::Time last_controller_time_base_;
-    bool platform_is_moving_ = false;
+
+    diagnostic_updater::Updater diagnostic_;
+    void diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
 
     // Modalities control variables
-    
+
     // Drive modes
     drive_mode_type drive_mode_used_;
     const std::map<drive_mode_type, std::string> drive_mode_type_names_ = 
