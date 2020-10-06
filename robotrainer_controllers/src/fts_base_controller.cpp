@@ -231,6 +231,18 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     // First read states from the hardware
     updateRobotState();
     updateState();
+    
+    if (debug_) {
+        if (pub_platform_hw_velocity_->trylock()) {
+            std::array<double, 3> plf_vel = getVelocity();
+            pub_platform_hw_velocity_->msg_.header.stamp = time;
+            pub_platform_hw_velocity_->msg_.header.frame_id = controllerFrameId_;
+            pub_platform_hw_velocity_->msg_.twist.linear.x = plf_vel[0];
+            pub_platform_hw_velocity_->msg_.twist.linear.y = plf_vel[1];
+            pub_platform_hw_velocity_->msg_.twist.angular.z = plf_vel[2];
+            pub_platform_hw_velocity_->unlockAndPublish();
+        }
+    }
 
     std::array<double, 3> new_vel;
     bool set_new_commands = true;
@@ -244,14 +256,6 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         
         if (debug_) {
             convertToWrenchAndPublish(time, force_input_, pub_force_input_scaled_limited_);
-            if (pub_admittance_velocity_->trylock()) {
-              pub_admittance_velocity_->msg_.header.stamp = time;
-              pub_admittance_velocity_->msg_.header.frame_id = controllerFrameId_;
-              pub_admittance_velocity_->msg_.twist.linear.x = new_vel[0];
-              pub_admittance_velocity_->msg_.twist.linear.y = new_vel[1];
-              pub_admittance_velocity_->msg_.twist.angular.z = new_vel[2];
-              pub_admittance_velocity_->unlockAndPublish();
-            }
         }
 
 //                 TODO: This should go into a modality
