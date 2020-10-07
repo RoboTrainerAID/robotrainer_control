@@ -151,6 +151,7 @@ private:
     bool baseForce_allParamsStored_;
     //user derived force and velocity values (coming from parametrization step)
     std::array<double, 3> userParametrized_maxFT_;
+    geometry_msgs::Twist userParametrized_maxFT_all_;
     std::array<double, 3> userParametrized_maxVel_;
 
     //standard force and velocity values (to be able to reset)
@@ -208,7 +209,7 @@ private:
     PassiveBehaviorControllerBase *passive_behavior_ctrl_;
 
     // publishers for parametrization
-    realtime_tools::RealtimePublisher<geometry_msgs::Twist> *pub_base_virtSpring_, *pub_base_currentDist_, *pub_base_averageDist_, *pub_base_currentRawForce_, *pub_base_resForce_;
+    realtime_tools::RealtimePublisher<geometry_msgs::Twist> *pub_base_virtSpring_, *pub_base_currentDist_, *pub_base_averageDist_, *pub_base_currentRawForce_, *pub_base_resForce_, *pub_max_force_parameterization_result_;
 
     // leg tracking
     ros::Subscriber sub_legtrack_;

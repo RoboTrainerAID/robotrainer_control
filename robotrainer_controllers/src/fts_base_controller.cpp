@@ -1028,26 +1028,87 @@ void FTSBaseController::discretizeWithNewMassDamping( std::array<double,3> virtu
 * \brief Dynamic Reconfigure Callback of the FTSBaseController class
 */
 void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseControllerConfig &config, uint32_t level) {
+  // Update values in GUI only
+  config.x_damping = calculatevirtualdamping(config.x_max_force, config.x_max_vel, config.x_gain);
+  config.x_mass = calculatevirtualmass(config.x_time_const, config.x_damping);
+  config.y_damping = calculatevirtualdamping(config.y_max_force, config.y_max_vel, config.y_gain);
+  config.y_mass = calculatevirtualmass(config.y_time_const, config.y_damping);
+  config.rot_damping = calculatevirtualdamping(config.rot_max_torque, config.rot_max_rot_vel, config.rot_gain);
+  config.rot_intertia = calculatevirtualmass(config.rot_time_const, config.rot_damping);
 
-    if (!controller_started_) {
-        return;
-    }
-        
-    // Update values in GUI only
-    config.x_damping = calculatevirtualdamping(config.x_max_force, config.x_max_vel, config.x_gain);
-    config.x_mass = calculatevirtualmass(config.x_time_const, config.x_damping);    
-    config.y_damping = calculatevirtualdamping(config.y_max_force, config.y_max_vel, config.y_gain);
-    config.y_mass = calculatevirtualmass(config.y_time_const, config.y_damping);    
-    config.rot_damping = calculatevirtualdamping(config.rot_max_torque, config.rot_max_rot_vel, config.rot_gain);
-    config.rot_intertia = calculatevirtualmass(config.rot_time_const, config.rot_damping);
-    
+  if (!controller_started_) {
+    ROS_WARN("Controller is not started, therefore, the parameters can not be set! \n \
+              Returning the parameters from controllers");
+
+    config.reset_controller = false;
+    config.recalculate_FTS_offsets = false;
+    config.apply_base_controller_params = false;
+    config.no_hw_output = no_hw_output_;
+    config.use_twist_input = use_twist_input_;
+    config.debug_output = debug_;
+
+    config.x_force_controller = use_controller_[0];
+    config.y_force_controller = use_controller_[1];
+    config.rot_controller = use_controller_[2];
+    //Force-torque limits
+    config.x_min_force = min_ft_[0];
+    config.x_max_force = max_ft_[0];
+    config.y_min_force = min_ft_[1];
+    config.y_max_force = max_ft_[1];
+    config.rot_min_torque = min_ft_[2];
+    config.rot_max_torque = max_ft_[2];
+    // velocity limits
+    config.x_max_vel = max_vel_[0];
+    config.y_max_vel = max_vel_[1];
+    config.rot_max_rot_vel = max_vel_[2];
+    // controller parameters
+    config.x_gain = gain_[0];
+    config.x_time_const = time_const_[0];
+    config.y_gain = gain_[1];
+    config.y_time_const = time_const_[1];
+    config.rot_gain = gain_[2];
+    config.rot_time_const = time_const_[2];
+    config.backwards_max_force_scale = backwardsMaxForceScale_;
+    config.backwards_max_vel_scale = backwardsMaxVelScale_;
+
+
+    config.apply_control_actions = false;
+    config.spatial_control_action_type = 0;
+    config.counterforce_area_scaledown_dist = begin_scaledown_at_this_dist_;
+    config.area_counter_force_x = areaCounterForce_[0];
+    config.area_counter_force_y = areaCounterForce_[1];
+    config.area_counter_torque_rot = areaCounterForce_[2];
+
+    //global modalities
+    config.reversed_max_force_scale = reversedMaxForceScale_;
+    config.reversed_max_vel_scale = reversedMaxVelScale_;
+    config.y_reversed = yReversed_;
+
+    rotReversed_ = config.rot_reversed;
+
+    config.enable_counter_force = enableCounterForce_;
+    config.counter_force_x = staticCounterForce_[0];
+    config.counter_force_y = staticCounterForce_[1];
+    config.counter_torque_rot = staticCounterForce_[2];
+
+    config.adapt_center_of_rotation = adapt_center_of_rotation_ = config.adapt_center_of_rotation;
+    config.cor_x = cor_x_ = config.cor_x;
+    config.cor_y = cor_y_;
+
+    config.drive_mode_type = static_cast<int>(drive_mode_used_);
+
+    config.apply_control_actions = false;
+
+    return;
+  }
+
     // First check if anything changed, if not go out an do not stop controller
     bool needs_processing = config.reset_controller || config.recalculate_FTS_offsets ||
                             config.apply_base_controller_params || config.apply_control_actions ||
                             no_hw_output_ != config.no_hw_output || 
                             use_twist_input_ != config.use_twist_input ||
                             debug_ != config.debug_output;
-             ;
+
     if (!needs_processing) {
         return;
     }
@@ -1088,9 +1149,9 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
         use_controller_[0] = config.x_force_controller;
         ROS_INFO_COND(!use_controller_[0], "X Dimension switched off");
         use_controller_[1] = config.y_force_controller;
-        ROS_INFO_COND(!use_controller_[0], "Y Dimension switched off");
+        ROS_INFO_COND(!use_controller_[1], "Y Dimension switched off");
         use_controller_[2] = config.rot_controller;
-        ROS_INFO_COND(!use_controller_[0], "Rotational Dimension switched off");
+        ROS_INFO_COND(!use_controller_[2], "Rotational Dimension switched off");
         //Force-torque limits
         min_ft_[0] = config.x_min_force;
         max_ft_[0] = config.x_max_force;

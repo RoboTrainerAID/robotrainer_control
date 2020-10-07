@@ -507,14 +507,13 @@ protected:
     ucdm_cmd::Request drive_mode_request_;
     ucdm_cmd::Response drive_mode_response_;
 
+    bool controller_started_;
 
 private:
     boost::mutex controller_internal_states_mutex_;
     boost::mutex locking_mutex_;
     boost::shared_mutex running_mutex_, can_be_running_mutex_;
     boost::shared_mutex user_is_gripping_mutex_;
-
-    bool controller_started_;
 
     // internal state variables
     bool internal_state_updated_ = false;
