@@ -484,9 +484,15 @@ protected:
 
     //helper functions
     geometry_msgs::Vector3 convertToMessage(std::array<double, 3> input);
-    void convertToWrenchAndPublish(const ros::Time & time, 
-                                   const std::array<double,3> & input_vec,
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> & wrench_pub);
+    void convertToWrenchAndPublish(
+      const ros::Time & time,
+      const std::array<double,3> & input_vec,
+      std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> & wrench_pub);
+
+    void convertToTwistAndPublish(
+      const ros::Time & time,
+      const std::array<double, 3> & input_vec,
+      std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> & twist_pub);
     
     void untickDynamicReconfigureParam(std::string parameter_name);
 

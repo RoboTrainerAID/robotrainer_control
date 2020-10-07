@@ -233,15 +233,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
     updateState();
     
     if (debug_) {
-        if (pub_platform_hw_velocity_->trylock()) {
-            std::array<double, 3> plf_vel = getVelocity();
-            pub_platform_hw_velocity_->msg_.header.stamp = time;
-            pub_platform_hw_velocity_->msg_.header.frame_id = controllerFrameId_;
-            pub_platform_hw_velocity_->msg_.twist.linear.x = plf_vel[0];
-            pub_platform_hw_velocity_->msg_.twist.linear.y = plf_vel[1];
-            pub_platform_hw_velocity_->msg_.twist.angular.z = plf_vel[2];
-            pub_platform_hw_velocity_->unlockAndPublish();
-        }
+        convertToTwistAndPublish(time, getVelocity(), pub_platform_hw_velocity_);
     }
 
     std::array<double, 3> new_vel;
@@ -295,14 +287,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         }
 
         if (debug_) {
-            if (pub_admittance_velocity_->trylock()) {
-                pub_admittance_velocity_->msg_.header.stamp = time;
-                pub_admittance_velocity_->msg_.header.frame_id = controllerFrameId_;
-                pub_admittance_velocity_->msg_.twist.linear.x = new_vel[0];
-                pub_admittance_velocity_->msg_.twist.linear.y = new_vel[1];
-                pub_admittance_velocity_->msg_.twist.angular.z = new_vel[2];
-                pub_admittance_velocity_->unlockAndPublish();
-            }
+          convertToTwistAndPublish(time, new_vel, pub_admittance_velocity_);
         }
 
         // handle special cases for each dimension seperately
@@ -329,14 +314,7 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
         }
         
         if (debug_) {
-            if (pub_final_velocity_->trylock()) {
-                pub_final_velocity_->msg_.header.stamp = time;
-                pub_final_velocity_->msg_.header.frame_id = controllerFrameId_;
-                pub_final_velocity_->msg_.twist.linear.x = new_vel[0];
-                pub_final_velocity_->msg_.twist.linear.y = new_vel[1];
-                pub_final_velocity_->msg_.twist.angular.z = new_vel[2];
-                pub_final_velocity_->unlockAndPublish();
-            }
+          convertToTwistAndPublish(time, new_vel, pub_final_velocity_);
         }
 
         if (no_hw_output_) {
@@ -710,24 +688,25 @@ bool FTSBaseController::createControllerModalityInstances() {
         ROS_ERROR_STREAM("[fts_base_controller.cpp] Force_Controller_Modality plugin failed to load:" << e.what());
         return false;
     }
-    //virtual_walls_controller
-    try {
-        walls_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
-        ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Controller_Modality loaded");
-    }
-    catch(pluginlib::PluginlibException& e) {
-        ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Controller_Modality plugin failed to load:" << e.what());
-        return false;
-    }
-    //path_tracking_controller
-    try {
-        pathtracking_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesPathTrackingController");
-        ROS_INFO_ONCE("[fts_base_controller.cpp] Pathtracking_Controller_Modality loaded");
-    }
-    catch(pluginlib::PluginlibException& e) {
-        ROS_ERROR_STREAM("[fts_base_controller.cpp] Pathtracking_Controller_Modality plugin failed to load:" << e.what());
-        return false;
-    }
+    // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+//     //virtual_walls_controller
+//     try {
+//         walls_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
+//         ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Controller_Modality loaded");
+//     }
+//     catch(pluginlib::PluginlibException& e) {
+//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Controller_Modality plugin failed to load:" << e.what());
+//         return false;
+//     }
+//     //path_tracking_controller
+//     try {
+//         pathtracking_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesPathTrackingController");
+//         ROS_INFO_ONCE("[fts_base_controller.cpp] Pathtracking_Controller_Modality loaded");
+//     }
+//     catch(pluginlib::PluginlibException& e) {
+//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Pathtracking_Controller_Modality plugin failed to load:" << e.what());
+//         return false;
+//     }
 
     return true;
 }
@@ -900,8 +879,9 @@ std::array<double, 3> FTSBaseController::applyModalities(
             input_msg_before_modality.wrench_.torque.z = force_input[2];
 
             force_controller_modality_ptr_->update(input_msg_before_modality, output_msg_after_modality);
-            walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
-            pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
+            // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+//             walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
+//             pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
 
             vel_after_modalities[0] = output_msg_after_modality.twist_.linear.x;
             vel_after_modalities[1] = output_msg_after_modality.twist_.linear.y;
@@ -1606,21 +1586,56 @@ geometry_msgs::Vector3 FTSBaseController::convertToMessage( std::array<double,3>
 }
 
 /**
- * \brief This function converts a std::array<double, 3> input vector into a geometry_msgs::Vector3 message
+ * \brief This function converts a std::array<double, 3> input vector into a geometry_msgs::WrenchStamped message
  */
-void FTSBaseController::convertToWrenchAndPublish(const ros::Time & time, 
-                                                  const std::array<double,3> & input_vec,
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> & wrench_pub)
-{   
-    if (wrench_pub->trylock()) {
-        wrench_pub->msg_.header.stamp = time;
-        wrench_pub->msg_.header.frame_id = controllerFrameId_;
-        wrench_pub->msg_.wrench.force.x = input_vec[0];
-        wrench_pub->msg_.wrench.force.y = input_vec[1];
-        wrench_pub->msg_.wrench.torque.z = input_vec[2];
-        wrench_pub->unlockAndPublish();
-    }
+void FTSBaseController::convertToWrenchAndPublish(
+  const ros::Time & time,
+  const std::array<double, 3> & input_vec,
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped>> & wrench_pub)
+{
+  if (wrench_pub->trylock()) {
+    wrench_pub->msg_.header.stamp = time;
+    wrench_pub->msg_.header.frame_id = controllerFrameId_;
+    wrench_pub->msg_.wrench.force.x = input_vec[0];
+    wrench_pub->msg_.wrench.force.y = input_vec[1];
+    wrench_pub->msg_.wrench.torque.z = input_vec[2];
+    wrench_pub->unlockAndPublish();
+  }
 }
+
+/**
+ * \brief This function converts a std::array<double, 3> input vector into a geometry_msgs::Twist message
+ */
+void FTSBaseController::convertToTwistAndPublish(
+  const ros::Time & time,
+  const std::array<double, 3> & input_vec,
+  std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> & twist_pub)
+{
+  if (twist_pub->trylock()) {
+    twist_pub->msg_.header.stamp = time;
+    twist_pub->msg_.header.frame_id = controllerFrameId_;
+    twist_pub->msg_.twist.linear.x = input_vec[0];
+    twist_pub->msg_.twist.linear.y = input_vec[1];
+    twist_pub->msg_.twist.angular.z = input_vec[2];
+    twist_pub->unlockAndPublish();
+  }
+}
+
+// TODO: We also need the twist publisher
+// void FTSBaseController::publishTwist(
+//   const ros::Time & time,
+//   const std::array<double, 3> & input_vec,
+//   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped>> & twist_pub)
+// {
+//   if (twist_pub->trylock()) {
+//     twist_pub->msg_.header.stamp = time;
+//     twist_pub->msg_.header.frame_id = controllerFrameId_;
+//     twist_pub->msg_.twist.linear.x = input_vec[0];
+//     twist_pub->msg_.twist.linear.y = input_vec[1];
+//     twist_pub->msg_.twist.angular.z = input_vec[2];
+//     twist_pub->unlockAndPublish();
+//   }
+// }
 
 /*_______LED STUFF______*/
 /**
