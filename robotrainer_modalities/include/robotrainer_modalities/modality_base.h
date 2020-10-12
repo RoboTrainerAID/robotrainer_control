@@ -26,7 +26,7 @@ public:
         virtual double getLastLimitVelocityFactor() {ROS_INFO_ONCE("[modality_base.h] getLastLimitVelocityFactor Base"); }
 virtual ~ModalityBase(){};
 
-        //HACK!!!!!
+        // HACK!!!!!
         //note if those functions are not implemented in derived classes, this can lead to undefined symbol in lib.so ERROR
         virtual void setForceLimit(tf2::Vector3 max_force) { }
         virtual void setUseLimit(bool use_limit){}
@@ -43,6 +43,9 @@ protected:
         // Shared params
         robotrainer_parameters::SharedParams* sp_object_ptr_; ///< Object that manages the shared parameters
         robotrainer_parameters::SharedParamsParameters* ns_params_ptr_; ///< Commonly used parameters (namespace names)
+        
+        // To write values to Dynamic Reconfigure
+        bool params_callback_first_time_ = false;
 };
     
 /** 
@@ -72,6 +75,7 @@ template <typename T> ModalityBase<T>::ModalityBase() {
         {
                 ROS_ERROR("VirtualForces: Namespaces are not configured properly.");
         }
+        
 }
     
 /**

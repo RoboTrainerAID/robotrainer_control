@@ -21,27 +21,32 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
 
     /* get Parameters from rosparam server (stored in yaml file) */
     ros::NodeHandle fts_a_ctrl_nh(controller_nh, "FTSAdaptiveForceController");
-    fts_a_ctrl_nh.param<bool>("adaptive_force/use_passive_behavior_ctrlr", use_passive_behavior_ctrlr_, false);
+    fts_a_ctrl_nh.param<bool>("velocity_adaption/use_passive_behavior_ctrlr", use_passive_behavior_ctrlr_, false);
     // Adaptive force parameters
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/x", force_adaption_params_.min[0], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/y", force_adaption_params_.min[1], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_zero_vel/rot", force_adaption_params_.min[2], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/x", force_adaption_params_.max[0], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/y", force_adaption_params_.max[1], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/force_scale_max_vel/rot", force_adaption_params_.max[2], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/force_scale_zero_vel/x", force_adaption_params_.min[0], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/force_scale_zero_vel/y", force_adaption_params_.min[1], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/force_scale_zero_vel/rot", force_adaption_params_.min[2], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/force_scale_max_vel/x", force_adaption_params_.max[0], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/force_scale_max_vel/y", force_adaption_params_.max[1], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/force_scale_max_vel/rot", force_adaption_params_.max[2], 1.0);
     // damping adaption (yu2003)
-    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/x",
+    fts_a_ctrl_nh.param<double>("velocity_adaption/damping_adaption/min/x",
                                 damping_adaption_params_.min[0], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/y",
+    fts_a_ctrl_nh.param<double>("velocity_adaption/damping_adaption/min/y",
                                 damping_adaption_params_.min[1], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/min/rot", 
+    fts_a_ctrl_nh.param<double>("velocity_adaption/damping_adaption/min/rot", 
                                 damping_adaption_params_.min[2], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/x",
+    fts_a_ctrl_nh.param<double>("velocity_adaption/damping_adaption/max/x",
                                 damping_adaption_params_.max[0], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/y",
+    fts_a_ctrl_nh.param<double>("velocity_adaption/damping_adaption/max/y",
                                 damping_adaption_params_.max[1], 1.0);
-    fts_a_ctrl_nh.param<double>("adaptive_force/damping_adaption/max/rot",
+    fts_a_ctrl_nh.param<double>("velocity_adaption/damping_adaption/max/rot",
                                 damping_adaption_params_.max[2], 1.0);
+    // tanh
+    fts_a_ctrl_nh.param<double>("velocity_adaption/tanh/x", tanh_adaption_params_.scale[0], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/tanh/y", tanh_adaption_params_.scale[1], 1.0);
+    fts_a_ctrl_nh.param<double>("velocity_adaption/tanh/rot", tanh_adaption_params_.scale[2], 1.0);
+    
     // smooth transition
     fts_a_ctrl_nh.param<double>("transition/transition_rate", transition_rate_, 1.0);
     // param MaxForce test
@@ -232,6 +237,7 @@ void FTSAdaptiveForceController::update(const ros::Time& time, const ros::Durati
     }
 
     std::array<double,3> scaledLimitedFTSInput = FTSBaseController::getScaledLimitedFTSInput(fts_input_raw);
+    // TODO(denis): Add debug flag here
     if (pub_force_adapt_limited_input_->trylock()) {
         pub_force_adapt_limited_input_->msg_ = convertToMessage(scaledLimitedFTSInput);
         pub_force_adapt_limited_input_->unlockAndPublish();
@@ -1261,7 +1267,7 @@ void FTSAdaptiveForceController::reconfigureCallback(robotrainer_controllers::FT
     config.tanh_scale_x = tanh_adaption_params_.scale[0];
     config.tanh_scale_y = tanh_adaption_params_.scale[1];
     config.tanh_scale_z = tanh_adaption_params_.scale[2];
-
+    
     // Damping adaption
     config.damping_min_x = damping_adaption_params_.min[0];
     config.damping_min_y = damping_adaption_params_.min[1];

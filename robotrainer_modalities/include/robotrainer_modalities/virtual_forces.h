@@ -64,18 +64,21 @@ private:
         // Shared params
         using ModalityBase<T>::ns_params_ptr_;
         
+        // TODO(denis) Why do I have to do that??
+        using ModalityBase<T>::params_callback_first_time_; 
+        
         // Objects for param_handler and dynamic_reconfigure
         robotrainer_modalities::VirtualForcesParameters params_;
-        void reconfigureRequest(const robotrainer_modalities::VirtualForcesConfig& config, uint32_t level);
+        void reconfigureRequest(robotrainer_modalities::VirtualForcesConfig& config, uint32_t level);
         dynamic_reconfigure::Server<robotrainer_modalities::VirtualForcesConfig> dynamic_reconfigure_server_;
         
         // Params for the mass damping system
         double mds_f_; ///< Precalculated parameter for the mass damping system equation.
         double mds_v_; ///< Precalculated parameter for the mass damping system equation.
         
-        bool use_admitance_velocity_;
-        double damping_inverse_;
-
+        double force_to_vel_factor_;
+ 
+        // TODO: Make this as an independent internal data structure 
         // Vector-containers to hold the virtual force configuration
         std::vector<tf2::Vector3> forces_; ///< Contains the force vectors.
         std::vector<tf2::Vector3> area_center_points_; ///< Contains the area center points.
@@ -110,12 +113,12 @@ template <typename T> VirtualForces<T>::VirtualForces() : params_{ros::NodeHandl
         dynamic_reconfigure_server_.setCallback(boost::bind(&VirtualForces<T>::reconfigureRequest, this, _1, _2));
         
         // Publish messages (debugging purpose)
-        pub_position_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/virtual_forces/modalities_debug/position", 1000);
-        pub_velocity_in_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/velocity_in", 1000);
-        pub_velocity_out_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/velocity_out", 1000);
-        pub_resulting_velocity_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/resulting_velocity", 1000);
+        pub_position_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/virtual_forces/modalities_debug/position", 1);
+        pub_velocity_in_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/velocity_in", 1);
+        pub_velocity_out_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/velocity_out", 1);
+        pub_resulting_velocity_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/resulting_velocity", 1);
         // pub_resulting_force_ = nh_.advertise<geometry_msgs::WrenchStamped>("virtual_forces/modalities_debug/resulting_force", 1000);
-        pub_resulting_force_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/resulting_force", 1000);
+        pub_resulting_force_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/resulting_force", 1);
 }
 
 /**
@@ -222,14 +225,14 @@ template <typename T> bool VirtualForces<T>::update(const T& data_in, T& data_ou
                 // Logging, if the robot moved form the outside of a force area to the inside
         
                 if (inside_area) {
-                        ROS_WARN_STREAM_COND(prev_affected_by_[i] == false , "Within effective area of " << i << ". Virtual Force: [" << center_force.getX() << ", " << center_force.getY() << ", " << center_force.getZ() <<"]. Area radius:" << area_radius);
+                        ROS_DEBUG_STREAM_COND(prev_affected_by_[i] == false , "Within effective area of " << i << ". Virtual Force: [" << center_force.getX() << ", " << center_force.getY() << ", " << center_force.getZ() <<"]. Area radius:" << area_radius);
                         ROS_INFO_COND(prev_affected_by_[i] == false ,"Forces influence START [x:%.2f],[y:%.2f],                [z:%.2f]", current_position.getX(), current_position.getY(), current_position.getZ());
                         if (prev_affected_by_[i] == false){
                                 on_entry[i] = true;
                         }
                         prev_affected_by_[i]  = true;
                 } else {
-                        ROS_WARN_STREAM_COND(prev_affected_by_[i] == true , "Out of the effective area of " << i << ".");
+                        ROS_DEBUG_STREAM_COND(prev_affected_by_[i] == true , "Out of the effective area of " << i << ".");
                         ROS_INFO_COND(prev_affected_by_[i] == true, "Forces influence STOP [x:%.2f],[y:%.2f],                [z:%.2f]",  current_position.getX(), current_position.getY(), current_position.getZ());
                         prev_affected_by_[i]  = false;
                 }
@@ -292,8 +295,8 @@ template <typename T> bool VirtualForces<T>::update(const T& data_in, T& data_ou
                 
                 tf2::Vector3 resulting_velocity_linear;
                 // Translate the virtual force to a virtual velocity by adopting a mass damping system.
-                if(use_admitance_velocity_) {
-                        resulting_velocity_linear = prev_virt_forces_[i] * damping_inverse_;
+                if(params_.linear_velocity_from_force_damping) {
+                        resulting_velocity_linear = prev_virt_forces_[i] * force_to_vel_factor_;
                 } else {
                         resulting_velocity_linear = prev_virt_velocities_linear_[i] * mds_v_ + prev_virt_forces_[i] * mds_f_;
                 }
@@ -320,7 +323,8 @@ template <typename T> bool VirtualForces<T>::update(const T& data_in, T& data_ou
                 // resulting_force_wrench.wrench.force = tf2::toMsg(resulting_force);
                 /* pub_resulting_force_.publish(resulting_force_wrench)*/; //Scaled down by 100 to better fit in a plot with the other values.
 
-                pub_resulting_force_.publish(	tf2::toMsg(resulting_force));
+                resulting_force /= params_.max_force;
+                pub_resulting_force_.publish(tf2::toMsg(resulting_force));
                 pub_resulting_velocity_.publish(tf2::toMsg(resulting_velocity_linear));
                 // publish = false; //make sure that only the first virtual force is published	
                 }
@@ -346,7 +350,16 @@ template <typename T> bool VirtualForces<T>::update(const T& data_in, T& data_ou
 /**
  * \brief Callback function for dynamic reconfigure.
  */
-template <typename T> void VirtualForces<T>::reconfigureRequest(const robotrainer_modalities::VirtualForcesConfig& config, uint32_t level) {   
+template <typename T> void VirtualForces<T>::reconfigureRequest(robotrainer_modalities::VirtualForcesConfig& config, uint32_t level) 
+{  
+    // if called the first time than set params
+    // TODO(denis): add this also to other SCAs
+    if (params_callback_first_time_) {
+        params_.toConfig(config);
+        params_callback_first_time_ = false;
+        return;
+    }
+    
         // update params hold by the params_-struct
         params_.fromConfig(config);
         
@@ -356,15 +369,16 @@ template <typename T> void VirtualForces<T>::reconfigureRequest(const robotraine
         mds_f_ = K * factor;
         mds_v_ = 1 - factor;
         // B_ = 1/K;
-        use_admitance_velocity_ = params_.use_admitance_velocity;
-        damping_inverse_  = K;
+        ROS_INFO_COND(params_.linear_velocity_from_force_damping, "Using linear velocity calculation V=F/D");
+        force_to_vel_factor_  = K;
 
         // Logging
-        ROS_DEBUG_STREAM("VirtualForces: Dynamic reconfigure."
+        ROS_INFO_STREAM("VirtualForces: Dynamic reconfigure."
                 << "\n    max_force:            " << params_.max_force
                 << "\n    max_velocity          " << params_.max_velocity
                 << "\n    controller_update_rate: " << params_.controller_update_rate
                 << "\n    time_const_T: " << params_.time_const_T
+                << "\n    damping_for_lienar: " << force_to_vel_factor_
         );
 };
 
@@ -388,7 +402,17 @@ template <typename T> void VirtualForces<T>::reconfigureRequest(const robotraine
  */
 template <typename T> bool VirtualForces<T>::configure() {
         ROS_INFO("VirtualForces config");
+        
+        // Delete all existing parameters to receive the new ones
         forces_.clear();
+        area_center_points_.clear();
+        area_radii_.clear();
+        force_distance_functions_.clear();
+        
+        prev_virt_forces_.clear();
+        prev_virt_velocities_linear_.clear();
+        prev_affected_by_.clear();
+        velocities_on_entry_.clear();
         
         // Namespaces
         std::string path_forces = "/" + ns_params_ptr_->project_ns + "/" + ns_params_ptr_->scenario_ns + "/" + ns_params_ptr_->force_ns;
@@ -403,6 +427,7 @@ template <typename T> bool VirtualForces<T>::configure() {
                 
                 // Retrieve and store all force related data based on the force names
                 for(int i = 0; i < force_names.size(); i++) {
+                    
                         std::string path_data_force_i = path_forces + "/" + ns_params_ptr_->data_ns + "/" + force_names[i];
                         
                         // force data
@@ -413,7 +438,7 @@ template <typename T> bool VirtualForces<T>::configure() {
                         tf2::Vector3 force;
                         tf2::fromMsg(force_msg, force);
                         forces_.push_back(force);
-                        // ROS_INFO_STREAM("Force:" << i << " ||[x: " << force.getX() << "] [y: " << force.getY() <<"] [z: " << force.getZ() << "]");
+//                         ROS_INFO_STREAM("Force:" << i << " ||[x: " << force.getX() << "] [y: " << force.getY() <<"] [z: " << force.getZ() << "]");
                         
                         // center point of the effective area of the force
                         geometry_msgs::Point area_center_msg;
@@ -423,11 +448,12 @@ template <typename T> bool VirtualForces<T>::configure() {
                         tf2::Vector3 area_center;
                         tf2::fromMsg(area_center_msg, area_center);
                         area_center_points_.push_back(area_center);
-                        // if(area_center){
-                        //      ROS_INFO_STREAM("Area:" << i << " ||[x: " << area_center.getX() << "] [y: " << area_center.getY() <<"] [z: " << area_center.getZ() << "]");
-                        // }else{
-                        //       ROS_INFO("No area_center");
-                        // }
+//                         if(area_center){
+//                              ROS_INFO_STREAM("Area:" << i << " ||[x: " << area_center.getX() << "] [y: " << area_center.getY() <<"] [z: " << area_center.getZ() << "]");
+//                         }else{
+//                               ROS_INFO("No area_center");
+//                         }
+                        
                         // calculate area radius from edge point
                         geometry_msgs::Point area_edge_msg;
                         ros::param::get(path_data_force_i + "/" + ns_params_ptr_->margin_ns + "/x", area_edge_msg.x);
@@ -436,16 +462,17 @@ template <typename T> bool VirtualForces<T>::configure() {
                         tf2::Vector3 area_edge;
                         tf2::fromMsg(area_edge_msg, area_edge);
                         area_radii_.push_back(tf2::tf2Distance(area_center, area_edge));
-                        // if(area_edge){
-                        //      ROS_INFO_STREAM("Area_edge:" << i << " ||[x: " << area_edge.getX() << "] [y: " << area_edge.getY() <<"] [z: " << area_edge.getZ() << "]");
-                        // }else{
-                        //      ROS_INFO("No area_edge");
-                        // }
+//                         if(area_edge){
+//                              ROS_INFO_STREAM("Area_edge:" << i << " ||[x: " << area_edge.getX() << "] [y: " << area_edge.getY() <<"] [z: " << area_edge.getZ() << "]");
+//                         }else{
+//                              ROS_INFO("No area_edge");
+//                         }
+                        
                         // force area configuration
                         std::string force_distance_function;
                         ros::param::get(path_data_force_i + "/" + ns_params_ptr_->arrow_ns + "/force_distance_function", force_distance_function);
                         force_distance_functions_.push_back(force_distance_function);
-                        // ROS_INFO_STREAM("Distancefunction:" << force_distance_function);
+//                         ROS_INFO_STREAM("Distancefunction:" << force_distance_function);
                         
                         // Initialize mass-damping-system and other virtual force related vars
                         tf2::Vector3 zero;

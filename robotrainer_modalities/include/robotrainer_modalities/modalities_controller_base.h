@@ -41,6 +41,7 @@ template <typename T>  ModalitiesControllerBase<T>::ModalitiesControllerBase() {
   
 template <typename T> geometry_msgs::TransformStamped ModalitiesControllerBase<T>::getMaptoRobotTransform() {
         
+        // TODO(denis): changes this to not be hard_coded frames
         geometry_msgs::TransformStamped transform_robot_map;
         try {
                 transform_robot_map = tf_buffer_ptr_->lookupTransform("base_link", "map", ros::Time(0));

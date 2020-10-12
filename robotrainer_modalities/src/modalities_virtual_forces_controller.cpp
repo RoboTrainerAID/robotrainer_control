@@ -26,9 +26,9 @@ template <typename T> ModalitiesVFController<T>::ModalitiesVFController() : para
         }
         this->modalitie_configured_ = false;
 
-        test_pub_ = nh_.advertise<geometry_msgs::Vector3>("modalities/modalitiesVFController/test", 1000);
-        HF_HV_Energy_pub_ = nh_.advertise<std_msgs::Float64>("modalities/modalitiesVFController/hf_vh_energy", 1000);
-        VF_MV_Energy_pub_ = nh_.advertise<std_msgs::Float64>("modalities/modalitiesVFController/hf_mh_energy", 1000);
+//         test_pub_ = nh_.advertise<geometry_msgs::Vector3>("modalities/modalitiesVFController/test", 1000);
+//         HF_HV_Energy_pub_ = nh_.advertise<std_msgs::Float64>("modalities/modalitiesVFController/hf_vh_energy", 1000);
+//         VF_MV_Energy_pub_ = nh_.advertise<std_msgs::Float64>("modalities/modalitiesVFController/hf_mh_energy", 1000);
 }
 
 

@@ -76,107 +76,107 @@ enum class drive_mode_type : std::uint8_t
 //     for (T element : this
 // }
 
-template<typename T, uint SIZE>
-class AxisValues
-{
-private:
-    std::array<T, SIZE> values_;
-public:
-    AxisValues() = default;
-    AxisValues(std::array<T, SIZE> input)
-    {
-        values_ = input;
-    }
-    explicit AxisValues(uint size): values_(size) {};
-
-    T& operator[](const std::size_t index)
-    {
-        return values_[index];
-    }
-
-    AxisValues& operator=(const T value)
-    {
-        for (uint i=0; i < values_.size(); i++) {
-            values_[i] = value;
-        }
-    }
-
-    AxisValues& operator=(const std::array<T, SIZE> value)
-    {
-        values_ = value;
-    }
-
-   AxisValues& operator=(const AxisValues<T, SIZE> value)
-    {
-        values_ = std::array<T, SIZE>(value);
-    }
-
-    AxisValues& operator+(const T value)
-    {
-        for (uint i=0; i < values_.size(); i++) {
-            values_[i] += value;
-        }
-    }
-
-    AxisValues& operator+(const std::array<T, SIZE> & value)
-    {
-        for (uint i=0; i < values_.size(); i++) {
-            values_[i] += value[i];
-        }
-    }
-
-    AxisValues& operator*(const T value)
-    {
-        for (uint i=0; i < values_.size(); i++) {
-            values_[i] *= value;
-            ROS_FATAL("In multiplicaiotn %f", values_[i]);
-        }
-    }
-
-//     AxisValues<T, SIZE>& operator*(const int value)
+// template<typename T, uint SIZE>
+// class AxisValues
+// {
+// private:
+//     std::array<T, SIZE> values_;
+// public:
+//     AxisValues() = default;
+//     AxisValues(std::array<T, SIZE> input)
+//     {
+//         values_ = input;
+//     }
+//     explicit AxisValues(uint size): values_(size) {};
+// 
+//     T& operator[](const std::size_t index)
+//     {
+//         return values_[index];
+//     }
+// 
+//     AxisValues& operator=(const T value)
+//     {
+//         for (uint i=0; i < values_.size(); i++) {
+//             values_[i] = value;
+//         }
+//     }
+// 
+//     AxisValues& operator=(const std::array<T, SIZE> value)
+//     {
+//         values_ = value;
+//     }
+// 
+//    AxisValues& operator=(const AxisValues<T, SIZE> value)
+//     {
+//         values_ = std::array<T, SIZE>(value);
+//     }
+// 
+//     AxisValues& operator+(const T value)
+//     {
+//         for (uint i=0; i < values_.size(); i++) {
+//             values_[i] += value;
+//         }
+//     }
+// 
+//     AxisValues& operator+(const std::array<T, SIZE> & value)
+//     {
+//         for (uint i=0; i < values_.size(); i++) {
+//             values_[i] += value[i];
+//         }
+//     }
+// 
+//     AxisValues& operator*(const T value)
 //     {
 //         for (uint i=0; i < values_.size(); i++) {
 //             values_[i] *= value;
+//             ROS_FATAL("In multiplicaiotn %f", values_[i]);
 //         }
 //     }
-//
-//     AxisValues<double, SIZE>& operator*(const double value)
+// 
+// //     AxisValues<T, SIZE>& operator*(const int value)
+// //     {
+// //         for (uint i=0; i < values_.size(); i++) {
+// //             values_[i] *= value;
+// //         }
+// //     }
+// //
+// //     AxisValues<double, SIZE>& operator*(const double value)
+// //     {
+// //         AxisValues<double, SIZE> result;
+// //         for (uint i=0; i < values_.size(); i++) {
+// //             result[i] = values_[i] * value;
+// //         }
+// //         return result;
+// //     }
+// 
+//     AxisValues& operator*(const std::array<T, SIZE> & value)
 //     {
-//         AxisValues<double, SIZE> result;
 //         for (uint i=0; i < values_.size(); i++) {
-//             result[i] = values_[i] * value;
+//             values_[i] *= value[i];
 //         }
-//         return result;
 //     }
-
-    AxisValues& operator*(const std::array<T, SIZE> & value)
-    {
-        for (uint i=0; i < values_.size(); i++) {
-            values_[i] *= value[i];
-        }
-    }
-
-    operator std::string() const
-    {
-        std::string string;
-        string = "AxisValues: ";
-
-        for (uint i=0; i < values_.size(); i++) {
-            string += std::string(i) + ": " + std::string((T)values_[i]) + "; ";
-        }
-        return string;
-    }
-
-    operator std::array<T, SIZE>() const
-    {
-        return values_;
-    }
-
-    uint size()
-    {
-        return values_.size();
-    }
-};
+// 
+//     operator std::string() const
+//     {
+//         std::string string;
+//         string = "AxisValues: ";
+// 
+//         for (uint i=0; i < values_.size(); i++) {
+//             string += std::string(i) + ": " + std::string((T)values_[i]) + "; ";
+//         }
+//         return string;
+//     }
+// 
+//     operator std::array<T, SIZE>() const
+//     {
+//         return values_;
+//     }
+// 
+//     uint size()
+//     {
+//         return values_.size();
+//     }
+// };
 
 
 class FTSBaseController : public WheelControllerBase<GeomController<UndercarriageCtrl> > {
@@ -365,9 +365,10 @@ protected:
 
     //modalities functions
 
-    bool createModalityInstances();
-    bool createControllerModalityInstances();
-    bool createBaseModalityInstances();
+    // TODO(denis): optimize this many functions here
+    bool loadModalityInstances();
+    bool loadControllerModalityInstances();
+    bool loadBaseModalityInstances();
 
     bool configureModalities();
     bool configureBaseModalities();

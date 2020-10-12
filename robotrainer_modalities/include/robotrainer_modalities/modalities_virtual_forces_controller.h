@@ -29,13 +29,13 @@ public:
 
 protected:
         ros::NodeHandle nh_;
-        ros::Publisher test_pub_;
-        ros::Publisher HF_HV_Energy_pub_;
-        ros::Publisher VF_MV_Energy_pub_;
-        
-        geometry_msgs::Vector3 test_msg_;
-        std_msgs::Float64 hf_hv_energy_msg_;
-        std_msgs::Float64 vf_mv_energy_msg_;
+//         ros::Publisher test_pub_;
+//         ros::Publisher HF_HV_Energy_pub_;
+//         ros::Publisher VF_MV_Energy_pub_;
+//         
+//         geometry_msgs::Vector3 test_msg_;
+//         std_msgs::Float64 hf_hv_energy_msg_;
+//         std_msgs::Float64 vf_mv_energy_msg_;
         
         boost::shared_ptr<ModalityBase<geometry_msgs::Twist>> vf_modalitie_ptr_;
         bool use_modalities_VF_controller_;

@@ -161,7 +161,7 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     modalities_loaded_ = false;
     modalities_configured_ = false;
     
-//     createModalityInstances();
+    loadModalityInstances();
     
     drive_mode_used_ = drive_mode_type::NONE;
     ucdm_ = new UndercarriageDriveMode(root_nh);
@@ -618,17 +618,17 @@ bool FTSBaseController::getCanBeRunning()
 /**
  * \brief This function creates an instance for all modalities one after another, and returns true only if all were created successfully. If all are setup correctly, then the trigger modalities_loaded_ is set to true.
  */
-bool FTSBaseController::createModalityInstances() {
+bool FTSBaseController::loadModalityInstances() {
 
         ROS_INFO("Trying to load modalities so that they can be configured!");
-        modalities_loaded_ = ( createBaseModalityInstances() && createControllerModalityInstances() );
+        modalities_loaded_ = ( loadBaseModalityInstances() && loadControllerModalityInstances() );
         return modalities_loaded_;
 }
 
 /**
  * \brief This function creates an instance for all base-type-modalities one after another, and returns true only if all were created successfully.
  */
-bool FTSBaseController::createBaseModalityInstances() {
+bool FTSBaseController::loadBaseModalityInstances() {
 
 //     pluginlib::ClassLoader<robotrainer_modalities::ModalityBase<geometry_msgs::Twist>> modalities_loader("robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>");
     modalities_loader_.reset(new pluginlib::ClassLoader<
@@ -642,37 +642,38 @@ bool FTSBaseController::createBaseModalityInstances() {
         ROS_ERROR_STREAM("[fts_base_controller.cpp] Force_Modality plugin failed to load:" << e.what());
         return false;
     }
-    //Walls
-    try {
-        walls_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualWalls");
-        ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Modality loaded");
-    } catch(pluginlib::PluginlibException& e) {
-        ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Modality plugin failed to load:" << e.what());
-        return false;
-    }
-    //Path Tracking
-    try {
-        pathtracking_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/PathTracking");
-        ROS_INFO_ONCE("[fts_base_controller.cpp] PathTracking_Modality loaded");
-    } catch(pluginlib::PluginlibException& e) {
-        ROS_ERROR_STREAM("[fts_base_controller.cpp] PathTracking_Modality plugin failed to load:" << e.what());
-        return false;
-    }
-    //Virtual Area
-    try {
-        area_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualAreas");
-        ROS_INFO_ONCE("[fts_base_controller.cpp] Areas_Modality loaded");
-    } catch(pluginlib::PluginlibException& e) {
-        ROS_ERROR_STREAM("[fts_base_controller.cpp] Areas_Modality plugin failed to load:" << e.what());
-        return false;
-    }
+    // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+//     //Walls
+//     try {
+//         walls_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualWalls");
+//         ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Modality loaded");
+//     } catch(pluginlib::PluginlibException& e) {
+//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Modality plugin failed to load:" << e.what());
+//         return false;
+//     }
+//     //Path Tracking
+//     try {
+//         pathtracking_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/PathTracking");
+//         ROS_INFO_ONCE("[fts_base_controller.cpp] PathTracking_Modality loaded");
+//     } catch(pluginlib::PluginlibException& e) {
+//         ROS_ERROR_STREAM("[fts_base_controller.cpp] PathTracking_Modality plugin failed to load:" << e.what());
+//         return false;
+//     }
+//     //Virtual Area
+//     try {
+//         area_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualAreas");
+//         ROS_INFO_ONCE("[fts_base_controller.cpp] Areas_Modality loaded");
+//     } catch(pluginlib::PluginlibException& e) {
+//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Areas_Modality plugin failed to load:" << e.what());
+//         return false;
+//     }
     return true;
 }
 
 /**
  * \brief This function creates an instance for all controller-type-modalities one after another, and returns true only if all were created successfully.
  */
-bool FTSBaseController::createControllerModalityInstances() {
+bool FTSBaseController::loadControllerModalityInstances() {
 
 //     pluginlib::ClassLoader<robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>> modality_controllers_loader("robotrainer_modalities", "robotrainer_modalities::ModalitiesControllerBase<robotrainer_helper_types::wrench_twist>");
     modality_controllers_loader_.reset(new pluginlib::ClassLoader<
@@ -722,7 +723,7 @@ bool FTSBaseController::createControllerModalityInstances() {
  */
 bool FTSBaseController::configureModalities() {
 
-    if (!modalities_loaded_  && !createModalityInstances() ) {
+    if ( !modalities_loaded_  && !loadModalityInstances() ) {
         ROS_WARN("Modalities could not be configured as they cannot be loaded by the pluginClassLoader!");
         return false;
     } else {
@@ -744,24 +745,25 @@ bool FTSBaseController::configureBaseModalities() {
     } else {
             ROS_DEBUG("Force_modality configured!");
     }
-    if ( !walls_modality_ptr_->configure() ) {
-            ROS_ERROR("Unable to configure walls_modality!");
-            success = false;
-    } else {
-            ROS_DEBUG("Walls_modality configured!");
-    }
-    if ( !pathtracking_modality_ptr_->configure() ) {
-            ROS_ERROR("Unable to configure pathtracking_modality!");
-            success = false;
-    } else {
-            ROS_DEBUG("Pathtracking_modality configured!");
-    }
-    if ( !area_modality_ptr_->configure() ) {
-            ROS_ERROR("Unable to configure area_modality!");
-            success = false;
-    } else {
-            ROS_DEBUG("Area_modality configured!");
-    }
+    // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+//     if ( !walls_modality_ptr_->configure() ) {
+//             ROS_ERROR("Unable to configure walls_modality!");
+//             success = false;
+//     } else {
+//             ROS_DEBUG("Walls_modality configured!");
+//     }
+//     if ( !pathtracking_modality_ptr_->configure() ) {
+//             ROS_ERROR("Unable to configure pathtracking_modality!");
+//             success = false;
+//     } else {
+//             ROS_DEBUG("Pathtracking_modality configured!");
+//     }
+//     if ( !area_modality_ptr_->configure() ) {
+//             ROS_ERROR("Unable to configure area_modality!");
+//             success = false;
+//     } else {
+//             ROS_DEBUG("Area_modality configured!");
+//     }
     return success;
 }
 
@@ -776,44 +778,48 @@ bool FTSBaseController::configureControllerModalities() {
     } else {
             ROS_DEBUG("Force_controller_modality configured!");
     }
-    if ( !walls_controller_modality_ptr_->configure() ) {
-            ROS_ERROR("Unable to configure walls_controller_modality!");
-            success = false;
-    } else {
-            ROS_DEBUG("Walls_controller_modality configured!");
-    }
-    if ( !pathtracking_controller_modality_ptr_->configure() ) {
-            ROS_ERROR("Unable to configure pathtracking_controller_modality!");
-            success = false;
-    } else {
-            ROS_DEBUG("Pathtracking_controller_modality configured!");
-    }
+    // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+//     if ( !walls_controller_modality_ptr_->configure() ) {
+//             ROS_ERROR("Unable to configure walls_controller_modality!");
+//             success = false;
+//     } else {
+//             ROS_DEBUG("Walls_controller_modality configured!");
+//     }
+//     if ( !pathtracking_controller_modality_ptr_->configure() ) {
+//             ROS_ERROR("Unable to configure pathtracking_controller_modality!");
+//             success = false;
+//     } else {
+//             ROS_DEBUG("Pathtracking_controller_modality configured!");
+//     }
     return success;
 }
 
 bool FTSBaseController::setUseTwistInputCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp) {
 
-    stopController();
+//     stopController();
     ROS_DEBUG("Called service to set twist input on/off");
 
     resp.success = true;
     resp.message = setUseTwistInput(!use_twist_input_);
 
-    restartController();
+//     restartController();
 
     return true;
 }
 
 bool FTSBaseController::updateWheelParamsCallback(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &resp) {
 
-    stopController();
+    std::string lock = "update_wheel_params_callback";
+    protectedToggleControllerRunning(false, lock);
+    
     ROS_DEBUG("Called service to update kinematic configuration");
-
     resp.success = true;
     resp.success &= cob_omni_drive_controller::parseWheelParams(wheel_params_, wheel_ctrl_nh_);
     resp.success &= GeomController<UndercarriageCtrl>::update(wheel_params_);
-    ROS_INFO("Kinematics sucessfully updated!");
-
+    ROS_INFO_COND(resp.success, "Kinematics sucessfully updated!");
+    ROS_ERROR_COND(!resp.success, "Kinematics update faild!");
+    
+    protectedToggleControllerRunning(true, lock);
     restartControllerAndOrientWheels({1, 0, 0});
 
     return true;
@@ -823,7 +829,6 @@ bool FTSBaseController::updateWheelParamsCallback(std_srvs::Trigger::Request &re
 * \brief Callback function for service "configure_modalities"
 */
 bool FTSBaseController::configureModalitiesCallback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp) {
-    ROS_DEBUG("ConfigureModalitiesCallback called");
     return configureModalities();
 }
 
@@ -850,9 +855,10 @@ std::array<double, 3> FTSBaseController::applyModalities(
             msg_before_modality.angular.z=base_vel[2];
 
             force_modality_ptr_->update(msg_before_modality, after_force_mod);
-            walls_modality_ptr_->update(after_force_mod, after_walls_mod);
-            pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
-            area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
+            // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+//             walls_modality_ptr_->update(after_force_mod, after_walls_mod);
+//             pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
+//             area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
 
             vel_after_modalities[0] = after_area_mod.linear.x;
             vel_after_modalities[1] = after_area_mod.linear.y;
@@ -1162,6 +1168,8 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
     if (config.apply_control_actions) {
         ROS_INFO("[FTS_Base_Ctrlr]: Applying Control actions as set in dynamic reconfigure!");
 
+        // TODO(denis): Enalbed modalities to be on also if not configured
+        //              modalities configuraiton should than also stop controller
         int modality_type = config.spatial_control_action_type;
         if (modality_type == 1) {
             if (modalities_configured_) {
@@ -1171,14 +1179,14 @@ void FTSBaseController::reconfigureCallback(robotrainer_controllers::FTSBaseCont
                 areaCounterForce_[1] = config.area_counter_force_y;
                 areaCounterForce_[2] = config.area_counter_torque_rot;
             } else {
-                ROS_WARN("Request to use base_modalities although none have been configured yet. Please send a configuration first!");
+                ROS_ERROR("Request to use base_modalities although none have been configured yet. Please send a configuration first!");
                 modalities_used_ = none;
         }
         } else if (modality_type == 2) {
             if (modalities_configured_) {
                 modalities_used_ = controller_modalities;
             } else {
-                ROS_WARN("Request to use controller_modalities although none have been configured yet. Please send a configuration first!");
+                ROS_ERROR("Request to use controller_modalities although none have been configured yet. Please send a configuration first!");
                 modalities_used_ = none;
             }
         } else {

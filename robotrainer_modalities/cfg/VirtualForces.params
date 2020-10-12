@@ -4,7 +4,7 @@ gen = ParameterGenerator()
 
 #Configuration for all force areas
 gen.add("compensate_velocity", paramtype="bool", description="Keep the effect of the virtual forces indepentend of the velocity.", default=False, configurable=True)
-gen.add("use_admitance_velocity", paramtype="bool", description="Use linear connection between Mass-Damping admitance and velocity for calculation .", default=False, configurable=True)
+gen.add("linear_velocity_from_force_damping", paramtype="bool", description="Use linear connection between Mass-Damping admitance and velocity for calculation .", default=False, configurable=True)
 gen.add("compensation_reference_velocity", paramtype="double", description="Reference velocity for the compensation of the velocity", default=0.3, min=0.0, max=1.70, configurable=True)
 gen.add("trapezoid_max_at_percent_radius", paramtype="double", description="Trapezoidal distance_function only: percentage of the area_radius at which the trapezoidal function will start decreasing from its maximum to zero.", default=0.25, min=0.0, max=1.0, configurable=True)
 gen.add("max_force", paramtype="double", description="The virtual force that will cause the maximum virtual velocity.",  default=120, min=0.0, max=300, configurable=True)
