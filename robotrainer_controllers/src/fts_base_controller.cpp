@@ -349,9 +349,38 @@ void FTSBaseController::update(const ros::Time& time, const ros::Duration& perio
 
     if ((running and orient_wheels_ == 0) and use_twist_input_) {
         boost::mutex::scoped_lock lock(twist_mutex_);
+        
+//         // Dynamics test
+//         new_vel[0] = 0;
+//         new_vel[1] = 0;
+//         new_vel[2] = 0;
+//         const int seconds_scale = 2;
+//         ROS_INFO_THROTTLE(0.5, "Current joystick input is: %.2f", twist_command_.linear.x);
+//         if (test_started_) {
+//           if (twist_command_.linear.x < 0.0) {
+//             test_started_ = false;
+//           } else {
+//             if ((ros::Time::now() - test_begin_time_).toSec() < 1 * seconds_scale) {
+//               new_vel[0] = 0.5;
+//             } else if ((ros::Time::now() - test_begin_time_).toSec() < 2 * seconds_scale) {
+//               new_vel[0] = 0.7;
+//             } else if ((ros::Time::now() - test_begin_time_).toSec() < 3 * seconds_scale) {
+//               new_vel[0] = 0.3;
+//             } else {
+//               new_vel[0] = 0;
+//               test_started_ = false;
+//             }
+//           }
+//         } else if (twist_command_.linear.x > 0.0) {
+//           ROS_INFO("Test started.");
+//           test_started_ = true;
+//           test_begin_time_ = ros::Time::now();
+//         }
+        
         new_vel[0] = twist_command_.linear.x;
         new_vel[1] = twist_command_.linear.y;
         new_vel[2] = twist_command_.angular.z;
+        
         set_new_commands = true;
     }
 

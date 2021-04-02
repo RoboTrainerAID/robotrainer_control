@@ -578,6 +578,9 @@ private:
 
     void setRunning(bool value);
     void setCanBeRunning(bool value);
+    
+    ros::Time test_begin_time_;
+    bool test_started_ = false;
 };
 
 }  // namespce robotrainer_controllers
