@@ -427,6 +427,8 @@ template <typename T> bool VirtualForces<T>::configure() {
                 
                 // Retrieve and store all force related data based on the force names
                 for(int i = 0; i < force_names.size(); i++) {
+                  
+                  ROS_INFO_STREAM("VirtualForces: Reading '" << force_names[i] << "'.");
                     
                         std::string path_data_force_i = path_forces + "/" + ns_params_ptr_->data_ns + "/" + force_names[i];
                         
