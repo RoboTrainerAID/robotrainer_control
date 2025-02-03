@@ -154,7 +154,9 @@ void RobotrainerEditorWall::createWallWithoutAddingName(Point base, Point end, s
     ros::param::set(params->editor_ns + "/" + params->wall_ns + "/" + params->data_ns + "/" + name + "/R/x", end.x);
     ros::param::set(params->editor_ns + "/" + params->wall_ns + "/" + params->data_ns + "/" + name + "/R/y", end.y);
     ros::param::set(params->editor_ns + "/" + params->wall_ns + "/" + params->data_ns + "/" + name + "/R/z", end.z);
-    setDoNothing();
+
+    // (Andreas) I think this is unwanted behavior, the setDoNothing() is called for each wall but checks for all the all_anmes even if thei are not yet created. This should be called once after creating all.
+    // setDoNothing();
 
     updateModalities(name);
 }
@@ -508,7 +510,7 @@ void RobotrainerEditorWall::setDoNothing() {
         InteractiveMarker inter_marker;
         string aoe_cube_name = wall_names[i] + "/" + params->area_ns + "/" + params->cube_ns;
         if (!(server->get(aoe_cube_name, inter_marker))) {
-            ROS_ERROR("An aoe_cube element was not found in the interactive marker server! (setDoSomething(), robotrainer_editor_wall.cpp)");
+            ROS_ERROR("An aoe_cube element was not found in the interactive marker server! (setDoNothing(), robotrainer_editor_wall.cpp)");
             continue;
         }
         inter_marker.controls[0].interaction_mode = InteractiveMarkerControl::NONE;
@@ -572,6 +574,9 @@ void RobotrainerEditorWall::loadFile() {
         updateAreaOfEffect(wall_name);
     }
 
+    //(Andreas) moved to here
+    setDoNothing();
+
 }
 
 void RobotrainerEditorWall::reloadSession() {
@@ -608,6 +613,9 @@ void RobotrainerEditorWall::reloadSession() {
 
         updateAreaOfEffect(wall_name);
     }
+
+    //(Andreas) moved to here
+    setDoNothing();
 
 }
 
