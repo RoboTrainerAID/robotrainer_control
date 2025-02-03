@@ -672,30 +672,30 @@ bool FTSBaseController::loadBaseModalityInstances() {
         return false;
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
-//     //Walls
-//     try {
-//         walls_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualWalls");
-//         ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Modality loaded");
-//     } catch(pluginlib::PluginlibException& e) {
-//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Modality plugin failed to load:" << e.what());
-//         return false;
-//     }
-//     //Path Tracking
-//     try {
-//         pathtracking_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/PathTracking");
-//         ROS_INFO_ONCE("[fts_base_controller.cpp] PathTracking_Modality loaded");
-//     } catch(pluginlib::PluginlibException& e) {
-//         ROS_ERROR_STREAM("[fts_base_controller.cpp] PathTracking_Modality plugin failed to load:" << e.what());
-//         return false;
-//     }
-//     //Virtual Area
-//     try {
-//         area_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualAreas");
-//         ROS_INFO_ONCE("[fts_base_controller.cpp] Areas_Modality loaded");
-//     } catch(pluginlib::PluginlibException& e) {
-//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Areas_Modality plugin failed to load:" << e.what());
-//         return false;
-//     }
+    //Walls
+    try {
+        walls_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualWalls");
+        ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Modality loaded");
+    } catch(pluginlib::PluginlibException& e) {
+        ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Modality plugin failed to load:" << e.what());
+        return false;
+    }
+    //Path Tracking
+    try {
+        pathtracking_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/PathTracking");
+        ROS_INFO_ONCE("[fts_base_controller.cpp] PathTracking_Modality loaded");
+    } catch(pluginlib::PluginlibException& e) {
+        ROS_ERROR_STREAM("[fts_base_controller.cpp] PathTracking_Modality plugin failed to load:" << e.what());
+        return false;
+    }
+    //Virtual Area
+    try {
+        area_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualAreas");
+        ROS_INFO_ONCE("[fts_base_controller.cpp] Areas_Modality loaded");
+    } catch(pluginlib::PluginlibException& e) {
+        ROS_ERROR_STREAM("[fts_base_controller.cpp] Areas_Modality plugin failed to load:" << e.what());
+        return false;
+    }
     return true;
 }
 
@@ -719,24 +719,24 @@ bool FTSBaseController::loadControllerModalityInstances() {
         return false;
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
-//     //virtual_walls_controller
-//     try {
-//         walls_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
-//         ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Controller_Modality loaded");
-//     }
-//     catch(pluginlib::PluginlibException& e) {
-//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Controller_Modality plugin failed to load:" << e.what());
-//         return false;
-//     }
-//     //path_tracking_controller
-//     try {
-//         pathtracking_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesPathTrackingController");
-//         ROS_INFO_ONCE("[fts_base_controller.cpp] Pathtracking_Controller_Modality loaded");
-//     }
-//     catch(pluginlib::PluginlibException& e) {
-//         ROS_ERROR_STREAM("[fts_base_controller.cpp] Pathtracking_Controller_Modality plugin failed to load:" << e.what());
-//         return false;
-//     }
+    //virtual_walls_controller
+    try {
+        walls_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
+        ROS_INFO_ONCE("[fts_base_controller.cpp] Walls_Controller_Modality loaded");
+    }
+    catch(pluginlib::PluginlibException& e) {
+        ROS_ERROR_STREAM("[fts_base_controller.cpp] Walls_Controller_Modality plugin failed to load:" << e.what());
+        return false;
+    }
+    //path_tracking_controller
+    try {
+        pathtracking_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesPathTrackingController");
+        ROS_INFO_ONCE("[fts_base_controller.cpp] Pathtracking_Controller_Modality loaded");
+    }
+    catch(pluginlib::PluginlibException& e) {
+        ROS_ERROR_STREAM("[fts_base_controller.cpp] Pathtracking_Controller_Modality plugin failed to load:" << e.what());
+        return false;
+    }
 
     return true;
 }
@@ -775,24 +775,24 @@ bool FTSBaseController::configureBaseModalities() {
             ROS_DEBUG("Force_modality configured!");
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
-//     if ( !walls_modality_ptr_->configure() ) {
-//             ROS_ERROR("Unable to configure walls_modality!");
-//             success = false;
-//     } else {
-//             ROS_DEBUG("Walls_modality configured!");
-//     }
-//     if ( !pathtracking_modality_ptr_->configure() ) {
-//             ROS_ERROR("Unable to configure pathtracking_modality!");
-//             success = false;
-//     } else {
-//             ROS_DEBUG("Pathtracking_modality configured!");
-//     }
-//     if ( !area_modality_ptr_->configure() ) {
-//             ROS_ERROR("Unable to configure area_modality!");
-//             success = false;
-//     } else {
-//             ROS_DEBUG("Area_modality configured!");
-//     }
+    if ( !walls_modality_ptr_->configure() ) {
+            ROS_ERROR("Unable to configure walls_modality!");
+            success = false;
+    } else {
+            ROS_DEBUG("Walls_modality configured!");
+    }
+    if ( !pathtracking_modality_ptr_->configure() ) {
+            ROS_ERROR("Unable to configure pathtracking_modality!");
+            success = false;
+    } else {
+            ROS_DEBUG("Pathtracking_modality configured!");
+    }
+    if ( !area_modality_ptr_->configure() ) {
+            ROS_ERROR("Unable to configure area_modality!");
+            success = false;
+    } else {
+            ROS_DEBUG("Area_modality configured!");
+    }
     return success;
 }
 
@@ -808,18 +808,18 @@ bool FTSBaseController::configureControllerModalities() {
             ROS_DEBUG("Force_controller_modality configured!");
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
-//     if ( !walls_controller_modality_ptr_->configure() ) {
-//             ROS_ERROR("Unable to configure walls_controller_modality!");
-//             success = false;
-//     } else {
-//             ROS_DEBUG("Walls_controller_modality configured!");
-//     }
-//     if ( !pathtracking_controller_modality_ptr_->configure() ) {
-//             ROS_ERROR("Unable to configure pathtracking_controller_modality!");
-//             success = false;
-//     } else {
-//             ROS_DEBUG("Pathtracking_controller_modality configured!");
-//     }
+    if ( !walls_controller_modality_ptr_->configure() ) {
+            ROS_ERROR("Unable to configure walls_controller_modality!");
+            success = false;
+    } else {
+            ROS_DEBUG("Walls_controller_modality configured!");
+    }
+    if ( !pathtracking_controller_modality_ptr_->configure() ) {
+            ROS_ERROR("Unable to configure pathtracking_controller_modality!");
+            success = false;
+    } else {
+            ROS_DEBUG("Pathtracking_controller_modality configured!");
+    }
     return success;
 }
 
@@ -885,9 +885,9 @@ std::array<double, 3> FTSBaseController::applyModalities(
 
             force_modality_ptr_->update(msg_before_modality, after_force_mod);
             // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
-//             walls_modality_ptr_->update(after_force_mod, after_walls_mod);
-//             pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
-//             area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
+            walls_modality_ptr_->update(after_force_mod, after_walls_mod);
+            pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
+            area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
 
             vel_after_modalities[0] = after_area_mod.linear.x;
             vel_after_modalities[1] = after_area_mod.linear.y;
@@ -915,8 +915,8 @@ std::array<double, 3> FTSBaseController::applyModalities(
 
             force_controller_modality_ptr_->update(input_msg_before_modality, output_msg_after_modality);
             // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
-//             walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
-//             pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
+            walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
+            pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
 
             vel_after_modalities[0] = output_msg_after_modality.twist_.linear.x;
             vel_after_modalities[1] = output_msg_after_modality.twist_.linear.y;
