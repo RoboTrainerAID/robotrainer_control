@@ -238,7 +238,7 @@ robotrainer: #Common namespace for all robotrainer related params
           margin: {X: -0.5, Y: 0.8, Z: 0.0} #point on area margin  
           amplification: 1.0 #amplification of velocities within area
           invert_direction: false #Invert direction within area
-          invert_rot: false #Invert rotation within area
+          invert_rotation: false #Invert rotation within area
           invert_y: false #Invert y-axis within area
           keep_direction: false #Keep the direction constant within area
           keep_rotation: false #Keep the rotation constant within area

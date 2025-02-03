@@ -21,7 +21,7 @@ robotrainer: #Common namespace for all robotrainer related params
           margin: {X: -0.5, Y: 0.8, Z: 0.0} #point on area margin     
           amplification: 1.0
           invert_direction: false
-          invert_rot: true
+          invert_rotation: true
           invert_y: false
           keep_direction: false
           keep_rotation: false

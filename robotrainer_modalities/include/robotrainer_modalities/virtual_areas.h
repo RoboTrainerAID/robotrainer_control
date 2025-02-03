@@ -278,7 +278,7 @@ bool VirtualAreas<T>::configure() {
             std::map<std::string, bool> effects;
             double amplification_effect;
             ros::param::get(path_data_area_i + "/" + "invert_direction", effects["invert_direction"]);
-            ros::param::get(path_data_area_i + "/" + "invert_rot", effects["invert_rot"]);
+            ros::param::get(path_data_area_i + "/" + "invert_rotation", effects["invert_rotation"]);
             ros::param::get(path_data_area_i + "/" + "invert_y", effects["invert_y"]);
             ros::param::get(path_data_area_i + "/" + "keep_direction", effects["keep_direction"]);
             ros::param::get(path_data_area_i + "/" + "keep_rotation", effects["keep_rotation"]);
