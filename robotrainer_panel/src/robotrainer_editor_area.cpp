@@ -421,9 +421,20 @@ void RobotrainerEditorArea::toggleAreaFunction(const InteractiveMarkerFeedbackCo
     }
     else return;
 
+    // (Andreas) Removed because std::remove does not clean up the vector
         //will be true if rmeove fails
-    if(std::remove(area_functions[name].begin(), area_functions[name].end(), func_name) == area_functions[name].end())
+    // if(std::remove(area_functions[name].begin(), area_functions[name].end(), func_name) == area_functions[name].end())
+    //     area_functions[name].push_back(func_name);
+
+    auto it = std::find(area_functions[name].begin(), area_functions[name].end(), func_name);
+
+    if (it != area_functions[name].end()) {
+        // Function is already in the list, remove it
+        area_functions[name].erase(it);
+    } else {
+        // Function is not in the list, add it
         area_functions[name].push_back(func_name);
+    }
 
     updateModalities(name);
 }
