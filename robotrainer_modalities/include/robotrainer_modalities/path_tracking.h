@@ -434,8 +434,11 @@ void PathTracking<T>::reconfigureRequest(PathTrackingConfig& config, uint32_t le
  */
 template <typename T>
 bool PathTracking<T>::configure() {
-    
+        
+    // Delete all existing parameters to receive the new ones
     path_sections_.clear();
+    force_distance_functions_.clear();
+    max_deviations_.clear();
   
     // Namespaces
     std::string path_path = "/" + ns_params_ptr_->project_ns + "/" + ns_params_ptr_->scenario_ns + "/" + ns_params_ptr_->path_ns;

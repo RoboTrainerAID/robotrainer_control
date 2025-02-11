@@ -327,7 +327,11 @@ void VirtualWalls<T>::reconfigureRequest(VirtualWallsConfig& config, uint32_t le
 template <typename T>
 bool VirtualWalls<T>::configure() {
     
+    // Delete all existing parameters to receive the new ones
     wall_base_points_.clear();
+    wall_end_points_.clear();
+    effective_radii_.clear();
+    force_distance_functions_.clear();
     
     // Initialize mass-damping-system
     previous_wall_force_.setZero();

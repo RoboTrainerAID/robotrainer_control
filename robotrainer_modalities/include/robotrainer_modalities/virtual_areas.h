@@ -232,7 +232,12 @@ void VirtualAreas<T>::reconfigureRequest(VirtualAreasConfig& config, uint32_t le
 template <typename T>
 bool VirtualAreas<T>::configure() {
     
+    // Delete all existing parameters to receive the new ones
     area_center_points_.clear();
+    area_radii_.clear();
+    area_effects_names_.clear();
+    area_effects_.clear();
+    area_amplification_effects_.clear();
   
     // Namespaces
     std::string path_areas = "/" + ns_params_ptr_->project_ns + "/" + ns_params_ptr_->scenario_ns + "/" + ns_params_ptr_->area_ns;
