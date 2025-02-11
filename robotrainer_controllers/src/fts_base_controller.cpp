@@ -672,6 +672,7 @@ bool FTSBaseController::loadBaseModalityInstances() {
         return false;
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+    // (Andreas): Commented in again on Jan 2025
     //Walls
     try {
         walls_modality_ptr_ = modalities_loader_->createInstance("robotrainer_modalities/VirtualWalls");
@@ -719,6 +720,7 @@ bool FTSBaseController::loadControllerModalityInstances() {
         return false;
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+    // (Andreas): Commented in again on Jan 2025
     //virtual_walls_controller
     try {
         walls_controller_modality_ptr_ = modality_controllers_loader_->createInstance("robotrainer_modalities/ModalitiesVirtualWallsController");
@@ -775,6 +777,7 @@ bool FTSBaseController::configureBaseModalities() {
             ROS_DEBUG("Force_modality configured!");
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+    // (Andreas): Commented in again on Jan 2025
     if ( !walls_modality_ptr_->configure() ) {
             ROS_ERROR("Unable to configure walls_modality!");
             success = false;
@@ -808,6 +811,7 @@ bool FTSBaseController::configureControllerModalities() {
             ROS_DEBUG("Force_controller_modality configured!");
     }
     // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+    // (Andreas): Commented in again on Jan 2025
     if ( !walls_controller_modality_ptr_->configure() ) {
             ROS_ERROR("Unable to configure walls_controller_modality!");
             success = false;
@@ -885,6 +889,7 @@ std::array<double, 3> FTSBaseController::applyModalities(
 
             force_modality_ptr_->update(msg_before_modality, after_force_mod);
             // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+            // (Andreas): Commented in again on Jan 2025
             walls_modality_ptr_->update(after_force_mod, after_walls_mod);
             pathtracking_modality_ptr_->update(after_walls_mod, after_pathtrack_mod);
             area_modality_ptr_->update(after_pathtrack_mod, after_area_mod);
@@ -915,6 +920,7 @@ std::array<double, 3> FTSBaseController::applyModalities(
 
             force_controller_modality_ptr_->update(input_msg_before_modality, output_msg_after_modality);
             // TODO(denis): Commented output for the RoSy-Study in Oct. 2020
+            // (Andreas): Commented in again on Jan 2025
             walls_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
             pathtracking_controller_modality_ptr_->update(output_msg_after_modality, output_msg_after_modality);
 
