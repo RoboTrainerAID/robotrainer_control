@@ -122,7 +122,7 @@ The workspace on SR2 requires this package and the the package `robotrainer` on 
   
 + Recording a robot path:
   - Paths cannot be created in the tool, only recorded. This is this way to make shure that every path is reproducible in the real world.
-  - To record a path, one must open the "Actions" tab and "Toggle Expermient Mode".
+  - To record a path, one must open the "Actions" tab and "Toggle Record Mode".
   - Now, the "Record Single Point" button is enabled. By pressing it, the current position of the robot is recorded and connected to the last position recorded.
   - ![alt text](robotrainer_panel/documentation/05ToggleExperimentMode.png?raw=true "Toggle Expermient Mode") ![alt text](robotrainer_panel/documentation/06RecordSinglePoint.png?raw=true "Record Single Point")
   

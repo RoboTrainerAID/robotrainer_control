@@ -18,7 +18,7 @@ template <typename T> ModalitiesVirtualWallsController<T>::ModalitiesVirtualWall
 			 pluginlib::ClassLoader<ModalityBase<geometry_msgs::Twist>> vf_loader_ptr_("robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>");
 				try{
 					vf_modalitie_ptr_ = vf_loader_ptr_.createInstance("robotrainer_modalities/VirtualWalls");
-					ROS_INFO_ONCE("[modalities_virtual_walls_controller.cpp] VirtualWallsModalitie loaded");
+					ROS_INFO_ONCE("[modalities_virtual_walls_controller.cpp] VirtualWallsModality loaded");
 					this->modalitie_loaded_ = true;
 				}
 				catch(pluginlib::PluginlibException& e){
@@ -119,8 +119,8 @@ template <typename T> bool ModalitiesVirtualWallsController<T>::update(const T& 
 template <typename T> bool  ModalitiesVirtualWallsController<T>::configure()
 {
 	this->modalitie_configured_ = vf_modalitie_ptr_->configure();
-	ROS_INFO_COND(this->modalitie_configured_, "[modalities_virtual_walls_controller.cpp]vf_modality activated");
-	ROS_INFO_COND(!this->modalitie_configured_,"[modalities_virtual_walls_controller.cpp]vf_modalitie activation FAILED");
+	ROS_INFO_COND(this->modalitie_configured_, "[modalities_virtual_walls_controller.cpp]virtual_walls_modality activated");
+	ROS_INFO_COND(!this->modalitie_configured_,"[modalities_virtual_walls_controller.cpp]virtual_walls_modality activation FAILED");
 	return this->modalitie_configured_;
 }
 

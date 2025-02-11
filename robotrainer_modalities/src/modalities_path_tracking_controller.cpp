@@ -18,7 +18,7 @@ template <typename T> ModalitiesPathTrackingController<T>::ModalitiesPathTrackin
 			 pluginlib::ClassLoader<ModalityBase<geometry_msgs::Twist>> vf_loader_ptr_("robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>");
 				try{
 					vf_modalitie_ptr_ = vf_loader_ptr_.createInstance("robotrainer_modalities/PathTracking");
-					ROS_INFO_ONCE("[modalities_path_tracking_controller.cpp] PathTracking Modalitie loaded");
+					ROS_INFO_ONCE("[modalities_path_tracking_controller.cpp] PathTracking Modality loaded");
 					this->modalitie_loaded_ = true;
 				}
 				catch(pluginlib::PluginlibException& e){
@@ -114,7 +114,7 @@ template <typename T> bool  ModalitiesPathTrackingController<T>::configure()
 {
 	this->modalitie_configured_ = vf_modalitie_ptr_->configure();
 	ROS_INFO_COND(this->modalitie_configured_, "[modalities_path_tracking_controller.cpp]path_tracking_modality activated");
-	ROS_INFO_COND(!this->modalitie_configured_,"[modalities_path_tracking_controller.cpp]path_tracking_modalitie activation FAILED");
+	ROS_INFO_COND(!this->modalitie_configured_,"[modalities_path_tracking_controller.cpp]path_tracking_modality activation FAILED");
 	return this->modalitie_configured_;
 }
 

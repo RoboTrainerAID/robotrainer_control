@@ -18,7 +18,7 @@ template <typename T> ModalitiesVFController<T>::ModalitiesVFController() : para
         pluginlib::ClassLoader<ModalityBase<geometry_msgs::Twist>> vf_loader_ptr_("robotrainer_modalities", "robotrainer_modalities::ModalityBase<geometry_msgs::Twist>");
         try {
                 vf_modalitie_ptr_ = vf_loader_ptr_.createInstance("robotrainer_modalities/VirtualForces");
-                ROS_INFO_ONCE("VirtualForcesModalitie loaded");
+                ROS_INFO_ONCE("VirtualForcesModality loaded");
                 this->modalitie_loaded_ = true;
         } catch(pluginlib::PluginlibException& e) {
                 ROS_ERROR_STREAM("Modality plugin failed to load:" << e.what());
@@ -89,7 +89,7 @@ template <typename T> bool  ModalitiesVFController<T>::configure() {
         
         this->modalitie_configured_ = vf_modalitie_ptr_->configure();
         ROS_INFO_COND(this->modalitie_configured_, "[modalities_VF_controller.cpp]vf_modality activated");
-        ROS_INFO_COND(!this->modalitie_configured_,"[modalities_VF_controller.cpp]vf_modalitie activation FAILED");
+        ROS_INFO_COND(!this->modalitie_configured_,"[modalities_VF_controller.cpp]vf_modality activation FAILED");
         return this->modalitie_configured_;
 }
 
