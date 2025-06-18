@@ -62,6 +62,11 @@ bool FTSBaseController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHan
     fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_x", staticCounterForce_[0], 0.0);
     fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/counterforce_y", staticCounterForce_[1], 0.0);
     fts_base_ctrl_nh.param<double>("global_control_actions/global_counterforce/countertorque_z", staticCounterForce_[2], 0.0);
+    //Default parameters for area counterforce
+    fts_base_ctrl_nh.param<double>("spatial_control_action/area_counterforce/counterforce_area_scaledown_dist", begin_scaledown_at_this_dist_, 0.75);
+    fts_base_ctrl_nh.param<double>("spatial_control_action/area_counterforce/area_counter_force_x", areaCounterForce_[0], 40.0);
+    fts_base_ctrl_nh.param<double>("spatial_control_action/area_counterforce/area_counter_force_y", areaCounterForce_[1], 0.0);
+    fts_base_ctrl_nh.param<double>("spatial_control_action/area_counterforce/area_counter_torque_rot", areaCounterForce_[2], 0.0);
 
 
     base_reconfigured_flag_ = false;
