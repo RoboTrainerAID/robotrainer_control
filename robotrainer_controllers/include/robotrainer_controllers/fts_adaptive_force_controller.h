@@ -137,6 +137,7 @@ private:
 
 
     // baseForceTest variables
+    bool skip_rotation_step_;
     ros::Time baseForce_startingTime_;
     int baseForce_springConstant_;
     double baseForce_movingAverageTimeframe_;

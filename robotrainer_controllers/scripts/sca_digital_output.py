@@ -36,7 +36,7 @@ class SpatialControlActionsSyncOutput:
         value = math.sqrt(data.x*data.x + data.y*data.y)
         if (not self.output_set):
             if value > self.dead_zone_level:
-                self.request.state = 1;
+                self.request.state = 1
                 resp = self.phigets_set_service(self.request)
                 self.sync_signal_debug_pub.publish(self.request.state)
                 self.output_set = True
@@ -55,11 +55,11 @@ class SpatialControlActionsSyncOutput:
         res = TriggerResponse()
         res.success = True
       
-        self.request.state = 1;
+        self.request.state = 1
         self.phigets_set_service(self.request)
         self.sync_signal_debug_pub.publish(self.request.state)
         rospy.sleep(rospy.Duration(0.2))
-        self.request.state = 0;
+        self.request.state = 0
         resp = self.phigets_set_service(self.request)
         self.sync_signal_debug_pub.publish(self.request.state)
         

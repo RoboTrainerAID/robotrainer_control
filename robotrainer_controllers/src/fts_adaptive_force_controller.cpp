@@ -62,6 +62,10 @@ bool FTSAdaptiveForceController::init(hardware_interface::RobotHW* robot_hw, ros
     fts_a_ctrl_nh.param<double>("parametrization/y_base/returnForce", returnForce_y_, 15.0);
     fts_a_ctrl_nh.param<double>("parametrization/rot_base/returnForce", returnForce_rot_, 8.0);
 
+    fts_a_ctrl_nh.param<double>("parametrization/moving_average_timeframe", baseForce_movingAverageTimeframe_, 0.8);
+    fts_a_ctrl_nh.param<double>("parametrization/holding_distance", baseForce_holdingDistance_, 0.03);
+    fts_a_ctrl_nh.param<bool>("parametrization/skip_rotation_step", skip_rotation_step_, false);
+
     non_standard_max_forces_ = false;
             
     /* for parametrization */
@@ -991,8 +995,13 @@ void FTSAdaptiveForceController::switchParametrizationStep(){
             ROS_INFO("[PARAM STEP - baseYRight activated! ]");
             break;
         case baseYRight:
-            parameterization_current_step_ = baseRotLeft;
-            ROS_INFO("[PARAM STEP - baseRotLeft activated! ]");
+            if (skip_rotation_step_) {
+                parameterization_current_step_ = finished;
+                ROS_INFO("[PARAM STEP - Base force parametrization finished! ]");
+            } else {
+                parameterization_current_step_ = baseRotLeft;
+                ROS_INFO("[PARAM STEP - baseRotLeft activated! ]");
+            }
             break;
         case baseRotLeft:
             parameterization_current_step_ = baseRotRight;
