@@ -336,7 +336,8 @@ RobotrainerEditorPanel::RobotrainerEditorPanel( QWidget *parent_, ros::NodeHandl
     struct passwd *pw = getpwuid(getuid());
     std::string homedir(pw->pw_dir);
     //set default directory for saving/loading files
-    yaml_file_directory = QString::fromStdString(homedir + "/" + params->workspace_ns + "/src/" + params->project_ns + "/" + params->yaml_ns + "/");
+    // yaml_file_directory = QString::fromStdString(homedir + "/" + params->workspace_ns + "/src/" + params->project_ns + "/" + params->yaml_ns + "/");
+    yaml_file_directory = QString::fromStdString("/home/robotrainer/workspace/ros_ws_melodic_robotrainer/src/robotrainer_control/robotrainer_data_service/yamls/");
     
     setupLayout();
 }
