@@ -7,6 +7,7 @@
 #include <geometry_msgs/Vector3.h>
 #include <geometry_msgs/WrenchStamped.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/String.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <robotrainer_modalities/VirtualForcesParameters.h>
 #include <robotrainer_modalities/VirtualForcesConfig.h>
@@ -46,6 +47,8 @@ private:
     
         bool use_limit_ = false;
         tf2::Vector3 force_limit_{0.0,0.0,0.0};
+
+        bool published_inside_area_ = false;
                         
         // Objects for publishing messages
         // Debug purpose only. Only for the first virtual force.
@@ -55,6 +58,7 @@ private:
         ros::Publisher pub_velocity_out_;
         ros::Publisher pub_resulting_velocity_;
         ros::Publisher pub_resulting_force_;
+        ros::Publisher pub_status_;
         //     realtime_tools::RealtimePublisher realtime_pub_resulting_force_;
         
         // Objects and methods for locating the robot
@@ -113,12 +117,13 @@ template <typename T> VirtualForces<T>::VirtualForces() : params_{ros::NodeHandl
         dynamic_reconfigure_server_.setCallback(boost::bind(&VirtualForces<T>::reconfigureRequest, this, _1, _2));
         
         // Publish messages (debugging purpose)
-        pub_position_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/virtual_forces/modalities_debug/position", 1);
+        pub_position_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/position", 1);
         pub_velocity_in_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/velocity_in", 1);
         pub_velocity_out_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/velocity_out", 1);
         pub_resulting_velocity_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/resulting_velocity", 1);
         // pub_resulting_force_ = nh_.advertise<geometry_msgs::WrenchStamped>("virtual_forces/modalities_debug/resulting_force", 1000);
         pub_resulting_force_ = nh_.advertise<geometry_msgs::Vector3>("virtual_forces/modalities_debug/resulting_force", 1);
+        pub_status_ = nh_.advertise<std_msgs::String>("virtual_forces/modalities_debug/status", 1);
 }
 
 /**
@@ -227,6 +232,13 @@ template <typename T> bool VirtualForces<T>::update(const T& data_in, T& data_ou
                 if (inside_area) {
                         ROS_DEBUG_STREAM_COND(prev_affected_by_[i] == false , "Within effective area of " << i << ". Virtual Force: [" << center_force.getX() << ", " << center_force.getY() << ", " << center_force.getZ() <<"]. Area radius:" << area_radius);
                         ROS_INFO_COND(prev_affected_by_[i] == false ,"Forces influence START [x:%.2f],[y:%.2f],                [z:%.2f]", current_position.getX(), current_position.getY(), current_position.getZ());
+                        
+                        if (published_inside_area_ == false)  {
+                                std_msgs::String msg;
+                                msg.data = "force " + std::to_string(i) + " started";
+                                pub_status_.publish(msg);
+                                published_inside_area_ = true;
+                        }
                         if (prev_affected_by_[i] == false){
                                 on_entry[i] = true;
                         }
@@ -234,7 +246,14 @@ template <typename T> bool VirtualForces<T>::update(const T& data_in, T& data_ou
                 } else {
                         ROS_DEBUG_STREAM_COND(prev_affected_by_[i] == true , "Out of the effective area of " << i << ".");
                         ROS_INFO_COND(prev_affected_by_[i] == true, "Forces influence STOP [x:%.2f],[y:%.2f],                [z:%.2f]",  current_position.getX(), current_position.getY(), current_position.getZ());
-                        prev_affected_by_[i]  = false;
+                        
+                        if (published_inside_area_ == true) {
+                                std_msgs::String msg;
+                                msg.data = "force " + std::to_string(i) + " stopped";
+                                pub_status_.publish(msg);
+                                prev_affected_by_[i]  = false;
+                                published_inside_area_ = false;
+                        }
                 }
                 
                 // Initialize the resulting force vector with zero and only calculate it, if the robot is inside of the force area
@@ -365,6 +384,17 @@ template <typename T> void VirtualForces<T>::reconfigureRequest(robotrainer_moda
         
         // recalculate the params of the mass damping system
         double K = params_.max_velocity / params_.max_force;
+        // example 1-exp(-1/(0.5*200)) = 0.01
+        // mds_f = 0.008 * 0.01 = 0.00008
+        // mds_v = 1 - 0.01 = 0.99
+
+        // example 1-exp(-1/(0.005*200)) = 0.63
+        // mds_f = 0.008 * 0.63 = 0.00504
+        // mds_v = 1 - 0.63 = 0.37
+
+        // example 1-exp(-1/(0.001*200)) = 0.99
+        // mds_f = 0.008 * 0.99 = 0.00792
+        // mds_v = 1 - 0,99 = 0.01
         double factor = 1 - exp( -1 / (params_.time_const_T * params_.controller_update_rate));
         mds_f_ = K * factor;
         mds_v_ = 1 - factor;
@@ -378,7 +408,7 @@ template <typename T> void VirtualForces<T>::reconfigureRequest(robotrainer_moda
                 << "\n    max_velocity          " << params_.max_velocity
                 << "\n    controller_update_rate: " << params_.controller_update_rate
                 << "\n    time_const_T: " << params_.time_const_T
-                << "\n    damping_for_lienar: " << force_to_vel_factor_
+                << "\n    damping_for_linear: " << force_to_vel_factor_
         );
 };
 
